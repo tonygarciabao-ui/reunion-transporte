@@ -329,7 +329,7 @@ function descOf(fid, cod){
 // ───────────────────────── Render ─────────────────────────
 function renderFab(fab){
   const fd = S[fab.id], el = $("#f-"+fab.id), cg = fd.cargas;
-  const up = (key, lbl, accept, hora) => `<label class="up ${hora?"ok":""}">${lbl}<small>${hora ? "✓ "+esc(hora) : "Subir Excel"}</small><input type="file" accept="${accept}" data-up="${key}" data-fid="${fab.id}"/></label>`;
+  const up = (key, lbl, accept, hora, hint) => `<label class="up ${hora?"ok":""}" title="${esc(hint)}">${lbl}<small>${hora ? "✓ cargado "+esc(hora) : esc(hint)}</small><input type="file" accept="${accept}" data-up="${key}" data-fid="${fab.id}"/></label>`;
   const noche = nocheVal(fd), nAuto = nocheAuto(fd);
   const pct = cg && cg.total ? Math.round(cg.fin / cg.total * 100) : 0;
   const cl = clasif(fd);
@@ -339,7 +339,7 @@ function renderFab(fab){
   const kpi = (l, v, color, sub="") => `<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${color}">${v}</div><div class="s">${sub}</div></div>`;
 
   let stockHtml;
-  if (!fd.stocks) stockHtml = `<div class="empty">Sube el mismo Excel/XML de stocks que usas en “📂 Cargar stocks” de Diario Fábrica.</div>`;
+  if (!fd.stocks) stockHtml = `<div class="empty">Falta “📂 CARGAR STOCKS”.</div>`;
   else {
     const chip = (k, lbl, col) => `<button class="chip ${filtro===k?"sel":""}" data-filtro="${k}" data-fid="${fab.id}" style="border-color:${col};color:${col}"><b>${cl[k].length}</b>${lbl}</button>`;
     stockHtml = `<div class="chips">${chip("rotura","Roturas","#EF4444")}${chip("justo","Justos","#38BDF8")}${chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}</div>`;
@@ -371,7 +371,7 @@ function renderFab(fab){
   // Llenados: plan de envasado (hoy + lo cargado), resaltando los que cubren roturas/justos
   const riesgo = new Set([...cl.rotura, ...cl.justo].map(r => r.cod));
   let planHtml;
-  if (!fd.plan?.length) planHtml = `<div class="empty">Sube el mismo Excel que usas en “📂 Cargar planificación” de Diario Fábrica.</div>`;
+  if (!fd.plan?.length) planHtml = `<div class="empty">Falta “📂 CARGAR PLANIFICACIÓN”.</div>`;
   else {
     const hits = fd.plan.filter(p => riesgo.has(p.cod));
     const rest = fd.plan.filter(p => !riesgo.has(p.cod));
@@ -383,10 +383,10 @@ function renderFab(fab){
   el.innerHTML = `
     <h2>🏭 ${fab.label}</h2>
     <div class="uploads">
-      ${up("cargas","🚛 Cargas (día)",".xlsx,.xls",fd.cargasHora)}
-      ${up("stocks","📦 Stocks",".xlsx,.xls,.xml",fd.stocksHora)}
-      ${up("plan","📅 Planificación",".xlsx,.xls",fd.planHora)}
-      ${up("pedidos","📋 Pedidos (opc.)",".xlsx,.xls",fd.pedidosHora)}
+      ${up("cargas","🚛 CARGAS DEL DÍA",".xlsx,.xls",fd.cargasHora,"Diario › Cargas")}
+      ${up("stocks","📂 CARGAR STOCKS",".xlsx,.xls,.xml",fd.stocksHora,"Diario › Stocks")}
+      ${up("plan","📂 CARGAR PLANIFICACIÓN",".xlsx,.xls",fd.planHora,"Diario › Planificación")}
+      ${up("pedidos","📋 CARGAR PEDIDOS",".xlsx,.xls",fd.pedidosHora,"Opcional · Diario › Stocks")}
     </div>
 
     <div class="sec">Camiones</div>
