@@ -44,6 +44,8 @@
   .kpi .s{font-size:11px;color:var(--mut)}
   .kpi input{width:70px;text-align:center;background:transparent;border:none;border-bottom:1px dashed var(--line2);border-radius:0;font-size:30px;font-weight:800;color:var(--violet);padding:0}
   .kpi input::placeholder{color:var(--violet);opacity:.85}
+  .kpis.kpis-tot{display:flex;flex-wrap:wrap;gap:8px}
+  .kpis.kpis-tot .kpi{width:170px;padding:8px 10px}
   .bar{height:6px;background:#2A2A35;border-radius:4px;overflow:hidden;margin-top:10px}
   .bar i{display:block;height:100%;background:var(--green)}
   .chips{display:flex;gap:8px;flex-wrap:wrap}
@@ -53,6 +55,7 @@
   .tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
   .tbl th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);padding:5px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
   .tbl td{padding:5px 6px;border-bottom:1px solid #2c2c36;vertical-align:top}
+  .tbl th.n{text-align:right}
   .tbl td.n{text-align:right;font-variant-numeric:tabular-nums}
   .afbtn{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:700;color:#c4b5fd;background:#22103d;border:1px solid #8b5cf666;border-radius:5px;padding:1px 6px;cursor:pointer;white-space:nowrap}
   .afbtn.open{background:#3b2a55}
@@ -607,7 +610,7 @@ function renderGlobal(){
   const noche = FABS.reduce((s,f) => s + (nocheVal(S[f.id]) || 0), 0);
   el.innerHTML = `
     <h2 style="color:var(--violet);font-size:16px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">📊 Total grupo · ${fmtES(date)}</h2>
-    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpis kpis-tot">
       <div class="kpi"><div class="l">TOTALES</div><div class="v">${anyC ? tot("total") : "—"}</div></div>
       <div class="kpi"><div class="l">PENDIENTES</div><div class="v" style="color:#EF4444">${anyC ? tot("pend") : "—"}</div></div>
       <div class="kpi"><div class="l">CARGADOS NOCHE</div><div class="v" style="color:var(--violet)">${anyC || noche ? noche : "—"}</div></div>
