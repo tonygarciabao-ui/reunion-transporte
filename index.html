@@ -62,6 +62,13 @@
   .af td{color:#FFFFFF}
   .tbl.stk>tbody>tr>td,.tbl.stk>thead>tr>th{padding-left:5px;padding-right:5px}
   .tbl.stk>tbody>tr.det>td{padding:6px 8px 10px 22px}
+  /* Fila de artículo resaltada según su estado: fondo tintado + banda lateral */
+  .tbl.stk tr.art>td{background:var(--tint);padding-top:8px;padding-bottom:8px}
+  .tbl.stk tr.art>td:first-child{box-shadow:inset 5px 0 0 var(--band);padding-left:12px}
+  .tbl.stk tr.art .cod{font-size:14px}
+  .tbl.stk tr.rot{--tint:#ef444426;--band:#EF4444}
+  .tbl.stk tr.jus{--tint:#38bdf826;--band:#38BDF8}
+  .tbl.stk tr.ale{--tint:#f59e0b24;--band:#F59E0B}
   .tbl.stk .tag{font-size:10.5px}
   .dl{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap}
   .af{width:100%;border-collapse:collapse;font-size:12px}
@@ -485,8 +492,8 @@ function renderFab(fab){
         const nSin = af ? af.filter(a => a.e !== "fin").length : 0;
         const abierto = !!af && (fd.exp?.[r.cod] ?? !!fd.expAll);
         const dash = v => v ? fmtN(v) : `<span style="color:#52525B">—</span>`;
-        stockHtml += `<tr class="${abierto?"abierta":""}">
-          <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span><span class="desc" title="${esc(descOf(fab.id,r.cod))}">${esc(descOf(fab.id,r.cod))}</span></td>
+        stockHtml += `<tr class="art ${r.diff<0?"rot":r.diff===0?"jus":"ale"} ${abierto?"abierta":""}">
+          <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span></td>
           <td class="n">${fmtN(r.ped)}</td>
           <td class="n">${fmtN(r.fis)}</td>
           <td class="n" style="${r.dis<0?"color:#EF4444;font-weight:700":""}">${fmtN(r.dis)}</td>
