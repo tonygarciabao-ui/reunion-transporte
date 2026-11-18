@@ -87,22 +87,26 @@
   input.com{width:100%;min-width:110px;background:transparent;border:none;border-bottom:1px dashed var(--line2);padding:2px;font-size:12px}
   textarea{width:100%;min-height:70px;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:8px;resize:vertical}
   .empty{color:var(--dim);font-style:italic;font-size:12px;padding:6px 0}
-  .grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
-  .gc{background:var(--panel);border:1px solid var(--line);border-top:3px solid #22c55e;border-radius:10px;padding:8px 10px;min-width:0}
-  .gc.hit{border-top-color:var(--red)}
-  .gc h4{font-size:13px;font-weight:800;color:#6ee7a0;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
-  .gc h4 small{font-weight:600;color:var(--mut);font-size:10px}
-  .po{display:grid;grid-template-columns:auto 1fr;column-gap:8px;font-size:12px;padding:4px 0 4px 6px;border-top:1px solid #2c2c36;border-left:3px solid transparent}
-  .po:first-of-type{border-top:none}
-  .po b{font-variant-numeric:tabular-nums}
-  .po .ds{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .po .t{grid-column:1/-1;color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums;display:flex;gap:8px}
-  .po .qty{margin-left:auto;color:#E5E7EB;white-space:nowrap}
-  .po.done{opacity:.38}
-  .po.now{border-left-color:#22c55e;background:#0a3d1f55}
-  .po.now .t{color:#6ee7a0}
-  .po.hit{border-left-color:var(--red)}
-  .po.hit b{color:#fca5a5}
+  .grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:8px}
+  .gc{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;min-width:0}
+  .gc h4{font-size:13px;font-weight:800;color:#22c55e;letter-spacing:.04em;padding:7px 10px;background:#1f1f27;display:flex;justify-content:space-between;align-items:center}
+  .gc.hit h4{box-shadow:inset 3px 0 0 var(--red)}
+  .gc h4 small{font-weight:600;color:var(--mut);font-size:10px;letter-spacing:0}
+  .pt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+  .pt th{font-size:10px;font-weight:600;color:#9CA3AF;text-align:left;padding:4px 5px 2px}
+  .pt td{padding:3px 5px;border-top:1px solid #26262f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  .pt td.dia{color:#9CA3AF;text-overflow:clip}
+  .pt td.hi,.pt td.hf{text-overflow:clip}
+  .pt td.cod{font-weight:800;color:#fff}
+  .pt td.ds{color:#E5E7EB}
+  .pt td.hi{color:#4ade80;font-weight:700}
+  .pt td.hf{color:#f87171;font-weight:700}
+  .pt td.hf small{color:#9CA3AF;font-weight:500;font-size:10px;margin-right:3px}
+  .pt tr.done td{opacity:.35}
+  .pt tr.now td{background:#0a3d1f66}
+  .pt tr.now td.dia{box-shadow:inset 3px 0 0 #22c55e}
+  .pt tr.hit td.cod{color:#fca5a5}
+  .pt tr.hit td.dia{box-shadow:inset 3px 0 0 var(--red)}
   .leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mut);margin-bottom:8px}
   .leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
   #global{grid-column:1/-1;background:#161620;border:1px solid var(--line);border-top:3px solid var(--violet);border-radius:12px;padding:16px}
@@ -558,8 +562,8 @@ function renderFab(fab){
       const vis = ocultar ? ords.filter(p => estadoOrden(p) !== "done") : ords;
       const nDone = ords.length - ords.filter(p => estadoOrden(p) !== "done").length;
       const hit = vis.some(p => riesgo.has(p.cod));
-      const rows = vis.map(p => { const e = estadoOrden(p); return `<div class="po ${e} ${riesgo.has(p.cod)?"hit":""}"><b>${esc(p.cod)}</b><span class="ds" title="${esc(p.desc)}">${esc(p.desc.replace(/_\d+$/,""))}</span><span class="t">${e==="now"?"▶ ":""}${esc(p.d)} ${esc(p.hi)} → ${p.df!==p.d?esc(p.df)+" ":""}${esc(p.hf)}${p.rest ? `<span class="qty">${esc(p.rest)} ${esc(p.um)}${p.est && !/liberada/i.test(p.est) ? ` · ${esc(p.est)}` : ""}</span>` : ""}</span></div>`; }).join("");
-      return `<div class="gc ${hit?"hit":""}"><h4>${esc(g)}<small>${ocultar && nDone ? nDone+" terminada"+(nDone>1?"s":"") : ""}</small></h4>${rows || `<div class="empty">Sin órdenes pendientes</div>`}</div>`;
+      const rows = vis.map(p => { const e = estadoOrden(p); return `<tr class="${e} ${riesgo.has(p.cod)?"hit":""}" title="${esc(p.desc)}${p.est && !/liberada/i.test(p.est) ? " · "+esc(p.est) : ""}"><td class="dia">${esc(p.d)}</td><td class="cod">${esc(p.cod)}</td><td class="ds">${e==="now"?"▶ ":""}${esc(p.desc)}</td><td class="hi">${esc(p.hi)}</td><td class="hf">${p.df!==p.d?`<small>${esc(p.df)}</small>`:""}${esc(p.hf)}</td></tr>`; }).join("");
+      return `<div class="gc ${hit?"hit":""}"><h4>${esc(g)}<small>${ocultar && nDone ? nDone+" terminada"+(nDone>1?"s":"") : ""}</small></h4>${rows ? `<table class="pt"><colgroup><col style="width:46px"><col style="width:50px"><col><col style="width:50px"><col style="width:86px"></colgroup><thead><tr><th>Día</th><th>Código</th><th>Descripción</th><th>Inicio</th><th>Fin</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty" style="padding:6px 10px">Sin órdenes pendientes</div>`}</div>`;
     };
     const nG = Object.keys(grupos).length;
     const gHit = Object.entries(grupos).filter(([g,o]) => o.some(p => riesgo.has(p.cod) && estadoOrden(p) !== "done")).map(([g]) => g.replace("GRUPO ","G"));
