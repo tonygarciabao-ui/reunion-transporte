@@ -102,6 +102,7 @@
 <header>
   <h1>🚛 Reunión Transporte <span id="hdrDate"></span></h1>
   <input type="date" id="date" class="noprint" title="Día de la reunión"/>
+  <label class="btn noprint" id="bReales" title="Extracción SAP de camiones cargados (la misma que pegas en tu Excel de Camiones Cargados). Sirve un archivo para las dos fábricas.">🌙 CARGAS REALES<input type="file" accept=".xlsx,.xls,.xlsb" data-reales="1" style="display:none"/></label>
   <button class="btn noprint" id="bPresent" title="Oculta controles de carga para proyectar">📽️ Presentar</button>
   <button class="btn noprint" id="bCopy" title="Copia un resumen en texto para el acta / Teams / correo">📋 Copiar resumen</button>
   <button class="btn noprint" id="bCfg">⚙️</button>
@@ -113,7 +114,7 @@
     <label>Fin ventana noche<input type="time" id="cNocheFin"/></label>
     <label>Umbral alerta stock (≤ palés/uds de margen)<input type="number" id="cUmbral" min="1" style="width:90px"/></label>
     <button class="btn" id="bReset" style="border-color:#ef444477;color:#fca5a5">🗑️ Vaciar datos de este día</button>
-    <span style="font-size:11px;color:var(--mut);max-width:420px">“Cargados noche” = camiones con carga finalizada cuyo <b>inicio planificado</b> cae en la ventana. Es una estimación: si el dato real difiere, escríbelo encima.</span>
+    <span style="font-size:11px;color:var(--mut);max-width:460px">“Cargados noche” sale de <b>🌙 CARGAS REALES</b> con tus mismas reglas: hora real de fin de carga entre 22:00 y 06:00 (lo de después de las 22:00 cuenta para el día siguiente), carga ≥ 10 min y cada transporte una vez por fábrica. La ventana de aquí solo se usa como estimación si no hay archivo real.</span>
   </div>
   <section class="fab" id="f-agrela" style="--c:#D946EF"></section>
   <section class="fab" id="f-moras"  style="--c:#38BDF8"></section>
@@ -293,6 +294,73 @@ function parsePedidos(ab){
   return map;
 }
 
+// ───────────────────────── Cargas reales (extracción SAP camiones cargados) ─────────────────────────
+// Replica las fórmulas de "Camiones Cargados ... OPTIMIZADO": 
+//  FABRICA: Pto.expedic. 1020 = Grela, 1100 = Moras
+//  Duplicados: cuenta cada Nº de transporte una sola vez por fábrica (primera aparición)
+//  TURNO por hora real de fin de carga V: N si V<=6 o V>22 · M si 6<V<=14 · T resto
+//  FECHA REAL: si la hora de fin es >= 22 → día siguiente
+//  Solo cargas con tiempo de carga >= 10 min
+const LS_REAL = "reunion_tr_reales";
+let REAL = (() => { try { return JSON.parse(localStorage.getItem(LS_REAL) || "null"); } catch(e) { return null; } })();
+function serialToISO(n){ const d = new Date(Math.round((Math.floor(n) - 25569) * 864e5)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`; }
+function toISODate(v){
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return serialToISO(v);
+  if (v instanceof Date) return localISO(v);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/); if (m) { const y = m[3].length === 2 ? "20"+m[3] : m[3]; return `${y}-${pad(m[2])}-${pad(m[1])}`; }
+  return null;
+}
+// Hora → segundos del día
+function toSecs(v){
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return Math.round((v - Math.floor(v)) * 86400) % 86400;
+  if (v instanceof Date) return v.getHours()*3600 + v.getMinutes()*60 + v.getSeconds();
+  const m = String(v).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/); return m ? (+m[1])*3600 + (+m[2])*60 + (+(m[3]||0)) : null;
+}
+function addDays(iso, n){ const [y,m,d] = iso.split("-").map(Number); return localISO(new Date(y, m-1, d+n)); }
+function parseReales(ab){
+  const names = XLSX.read(ab, { type:"array", bookSheets:true }).SheetNames;
+  const pick = names.find(n => n.trim().toLowerCase() === "registros") || names[0];
+  const wb = XLSX.read(ab, { type:"array", sheets:[pick], dense:true });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[pick], { header:1, defval:null, raw:true });
+  let hi = rows.findIndex((r,i) => i < 20 && r && r.some(c => /n[ºo°]?\s*de\s*transporte/i.test(String(c||""))));
+  if (hi < 0) throw new Error("No encuentro la columna “Nº de transporte”");
+  const h = rows[hi].map(x => x ? String(x).trim().toLowerCase() : "");
+  const col = (...res) => h.findIndex(x => res.every(re => re.test(x)));
+  const iTr = col(/transporte/, /n[ºo°]?\s*de/), iFF = col(/fin/, /actual/, /carga/, /^(?!.*hora)/), iHF = col(/hora/, /fin/), iTC = col(/tiempo/, /carga/, /hh/), iPto = col(/pto/, /exped/);
+  const iFI = col(/inicio/, /actual/, /carga/, /^(?!.*hora)/), iHI = col(/hora/, /inic/);
+  if ([iTr,iFF,iHF,iPto].some(i => i < 0)) throw new Error("Faltan columnas: Nº de transporte / Fin actual carga / Hora act.fin carga / Pto.expedic.");
+  const FAB = { "1020":"agrela", "1100":"moras" };
+  const seen = new Set(), dias = {}; let desde = null, hasta = null, n = 0;
+  for (let i = hi+1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const tr = r[iTr] != null ? String(r[iTr]).trim() : ""; if (!tr) continue;
+    const fid = FAB[String(r[iPto] ?? "").trim()]; if (!fid) continue;
+    const k = tr + "|" + fid; if (seen.has(k)) continue; seen.add(k);
+    const fecha = toISODate(r[iFF]), sf = toSecs(r[iHF]); if (!fecha || sf === null) continue;
+    let tmin = iTC >= 0 ? toSecs(r[iTC]) : null;
+    if (tmin === null && iFI >= 0 && iHI >= 0) { const fi = toISODate(r[iFI]), si = toSecs(r[iHI]); if (fi && si !== null) tmin = (new Date(fecha+"T00:00:00") - new Date(fi+"T00:00:00"))/1000 + sf - si; }
+    if (tmin === null || tmin / 60 < 10) continue;
+    const H = Math.floor(sf/3600), V = H + Math.floor((sf%3600)/60)/60;
+    const turno = (V <= 6 || V > 22) ? "N" : (V <= 14 ? "M" : "T");
+    const fr = H >= 22 ? addDays(fecha, 1) : fecha;
+    const d = (dias[fr] ||= { agrela:{N:0,M:0,T:0}, moras:{N:0,M:0,T:0} });
+    d[fid][turno]++; n++;
+    if (!desde || fr < desde) desde = fr; if (!hasta || fr > hasta) hasta = fr;
+  }
+  if (!n) throw new Error("No hay cargas válidas de Grela (1020) ni Moras (1100)");
+  return { hora: nowHM(), cargado: localISO(), desde, hasta, n, dias };
+}
+function nocheReal(fid){
+  if (!REAL) return null;
+  const d = REAL.dias[date];
+  if (d) return d[fid].N;
+  return (date >= REAL.desde && date <= REAL.hasta) ? 0 : null;
+}
+
 // ───────────────────────── Cálculos ─────────────────────────
 function inNight(hm){
   const t = toMin(hm), a = toMin(cfg.nocheIni), b = toMin(cfg.nocheFin);
@@ -300,7 +368,8 @@ function inNight(hm){
   return a <= b ? (t >= a && t < b) : (t >= a || t < b);
 }
 function nocheAuto(fd){ return fd.cargas ? fd.cargas.finList.filter(c => inNight(c.ini)).length : null; }
-function nocheVal(fd){ return fd.nocheManual !== "" && fd.nocheManual != null ? +fd.nocheManual : nocheAuto(fd); }
+function nocheBase(fid, fd){ const r = nocheReal(fid); return r !== null ? r : nocheAuto(fd); }
+function nocheVal(fd, fid){ fid ||= FABS.find(f => S[f.id] === fd).id; return fd.nocheManual !== "" && fd.nocheManual != null ? +fd.nocheManual : nocheBase(fid, fd); }
 
 function stockRows(fd){
   if (!fd.stocks) return [];
@@ -359,7 +428,8 @@ function descOf(fid, cod){
 function renderFab(fab){
   const fd = S[fab.id], el = $("#f-"+fab.id), cg = fd.cargas;
   const up = (key, lbl, accept, hora, hint) => `<label class="up ${hora?"ok":""}" title="${esc(hint)}">${lbl}<small>${hora ? "✓ cargado "+esc(hora) : esc(hint)}</small><input type="file" accept="${accept}" data-up="${key}" data-fid="${fab.id}"/></label>`;
-  const noche = nocheVal(fd), nAuto = nocheAuto(fd);
+  const noche = nocheVal(fd, fab.id), nReal = nocheReal(fab.id), nAuto = nocheBase(fab.id, fd);
+  const nSrc = nReal !== null ? `real SAP · ${fmtES(addDays(date,-1)).slice(0,5)} 22:00 → ${fmtES(date).slice(0,5)} 06:00` : (nocheAuto(fd) !== null ? `estimado (inicio planificado) · sube 🌙` : "sube 🌙 CARGAS REALES");
   const pct = cg && cg.total ? Math.round(cg.fin / cg.total * 100) : 0;
   const cl = clasif(fd);
   const filtro = fd.filtro || "rotura";
@@ -435,7 +505,7 @@ function renderFab(fab){
       ${kpi("EN CARGA", cg ? cg.enCarga : "—", "#22C55E")}
       <div class="kpi"><div class="l">CARGADOS NOCHE</div>
         <input type="number" min="0" data-noche="${fab.id}" value="${fd.nocheManual!==""&&fd.nocheManual!=null?esc(fd.nocheManual):""}" placeholder="${nAuto ?? "—"}"/>
-        <div class="s">${nAuto!==null ? `auto ${nAuto} (${esc(cfg.nocheIni)}–${esc(cfg.nocheFin)})` : "manual"}${fd.nocheManual!==""&&fd.nocheManual!=null?' · <a href="#" data-nocheclr="'+fab.id+'" style="color:var(--mut)">usar auto</a>':""}</div>
+        <div class="s" style="${nReal===null?"color:#fcd34d":""}">${fd.nocheManual!==""&&fd.nocheManual!=null ? `manual (dato ${nAuto ?? "—"}) · <a href="#" data-nocheclr="${fab.id}" style="color:var(--mut)">quitar</a>` : esc(nSrc)}</div>
       </div>
     </div>
     ${cg ? `<div class="bar" title="${pct}% del total ya cargado"><i style="width:${pct}%"></i></div><div style="font-size:11px;color:var(--mut);margin-top:4px">${pct}% cargado</div>` : ""}
@@ -480,6 +550,7 @@ function renderGlobal(){
 }
 
 function render(){
+  renderRealesBtn();
   $("#hdrDate").textContent = fmtES(date);
   $("#date").value = date;
   FABS.forEach(renderFab);
@@ -493,7 +564,7 @@ function resumen(){
     const fd = S[f.id], c = fd.cargas, cl = clasif(fd);
     L.push(`■ ${f.label.toUpperCase()}`);
     if (c) L.push(`  Camiones: ${c.total} totales · ${c.pendientes + c.registrados} pendientes · ${c.enCarga} en carga · ${nocheVal(fd) ?? "—"} cargados noche`);
-    else if (fd.nocheManual) L.push(`  Cargados noche: ${fd.nocheManual}`);
+    else if (nocheVal(fd, f.id) != null) L.push(`  Cargados noche: ${nocheVal(fd, f.id)}`);
     if (fd.stocks) {
       L.push(`  Stocks: ${cl.rotura.length} roturas · ${cl.justo.length} justos · ${cl.alerta.length} en alerta (≤${cfg.umbral})`);
       cl.rotura.forEach(r => {
@@ -567,6 +638,25 @@ document.addEventListener("click", (e) => {
   if (t.dataset.nocheclr) { e.preventDefault(); S[t.dataset.nocheclr].nocheManual = ""; save(); render(); }
 });
 document.addEventListener("toggle", (e) => { const t = e.target; if (t.dataset && t.dataset.planopen) { S[t.dataset.planopen].planOpen = t.open; save(); } }, true);
+function renderRealesBtn(){
+  const b = $("#bReales"); if (!b) return;
+  b.firstChild.textContent = REAL ? `🌙 CARGAS REALES ✓ ${REAL.hora}` : "🌙 CARGAS REALES";
+  b.style.borderColor = REAL ? "#22c55e88" : "";
+  if (REAL) b.title = `Cargado ${fmtES(REAL.cargado)} ${REAL.hora} · datos del ${fmtES(REAL.desde)} al ${fmtES(REAL.hasta)} · ${REAL.n} cargas`;
+}
+document.addEventListener("change", async (e) => {
+  const t = e.target; if (!t.dataset || !t.dataset.reales) return;
+  const file = t.files[0]; t.value = ""; if (!file) return;
+  toast("⏳ Procesando " + file.name + "…");
+  await new Promise(r => setTimeout(r, 60));
+  try {
+    REAL = parseReales(await file.arrayBuffer());
+    try { localStorage.setItem(LS_REAL, JSON.stringify(REAL)); } catch(e) {}
+    render();
+    const d = REAL.dias[date];
+    toast(d ? `✓ Noche ${fmtES(date)}: Grela ${d.agrela.N} · Moras ${d.moras.N}` : `✓ Cargas reales ${fmtES(REAL.desde)}–${fmtES(REAL.hasta)} (sin datos del ${fmtES(date)})`);
+  } catch(err) { console.error(err); toast("⚠️ " + err.message); }
+});
 $("#bPresent").onclick = () => { present = !present; document.body.classList.toggle("present", present); $("#bPresent").classList.toggle("on", present); };
 $("#bCfg").onclick = () => $("#cfg").classList.toggle("open");
 $("#bCopy").onclick = async () => {
