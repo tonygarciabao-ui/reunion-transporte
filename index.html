@@ -108,6 +108,13 @@
   #cfg{display:none;grid-column:1/-1;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:14px;gap:16px;flex-wrap:wrap;align-items:end}
   #cfg.open{display:flex}
   #cfg label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--mut);font-weight:600}
+  .modal{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
+  .mbox{background:#1A1A22;border:1px solid var(--line2);border-radius:12px;padding:18px;max-width:560px;width:100%;max-height:85vh;overflow:auto}
+  .mbox h3{font-size:16px;margin-bottom:8px}
+  .mbox p{color:#E5E7EB;font-size:13px;margin-bottom:14px;line-height:1.45}
+  .mbtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  body.dragging main::before{content:"Suelta los archivos: encima de A Grela o Moras para asignarlos a esa fábrica, o en cualquier otro sitio para que la app lo deduzca del nombre";grid-column:1/-1;display:block;padding:12px;border:2px dashed #22c55e;border-radius:10px;color:#bbf7d0;text-align:center;font-weight:600}
+  .fab.drop{outline:3px dashed var(--c);outline-offset:4px;background:#1f1f2b}
   #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#0a3d1f;border:1px solid #22c55e;color:#bbf7d0;padding:8px 16px;border-radius:8px;font-weight:600;opacity:0;transition:.25s;pointer-events:none;z-index:50}
   #toast.show{opacity:1}
   details summary{cursor:pointer;list-style:none}
@@ -131,6 +138,7 @@
 <header>
   <h1>🚛 Reunión Transporte <span id="hdrDate"></span></h1>
   <input type="date" id="date" class="noprint" title="Día de la reunión"/>
+  <label class="btn noprint" id="bMasiva" style="border-color:#22c55e88" title="Selecciona todos los Excel a la vez (o arrástralos a la página). La app reconoce el tipo de cada archivo; la fábrica la saca del nombre del archivo o te la pregunta. Si los sueltas encima de una fábrica, van a esa fábrica.">📥 CARGA MASIVA<input type="file" multiple accept=".xlsx,.xls,.xlsb,.xml" data-masiva="1" style="display:none"/></label>
   <label class="btn noprint" id="bReales" title="Extracción SAP de camiones cargados (la misma que pegas en tu Excel de Camiones Cargados). Sirve un archivo para las dos fábricas.">🌙 CARGAS REALES<input type="file" accept=".xlsx,.xls,.xlsb" data-reales="1" style="display:none"/></label>
   <button class="btn" id="bPresent" title="Modo reunión: solo roturas con sus transportes pendientes (Esc para salir)">📽️ Presentar</button>
   <button class="btn noprint" id="bCopy" title="Copia un resumen en texto para el acta / Teams / correo">📋 Copiar resumen</button>
@@ -644,27 +652,112 @@ function resumen(){
   return L.join("\n");
 }
 
+// ───────────────────────── Carga de archivos (individual y masiva) ─────────────────────────
+const TIPO_LBL = { cargas:"🚛 Cargas del día", stocks:"📦 Stocks", plan:"📅 Planificación", pedidos:"📋 Pedidos", reales:"🌙 Cargas reales" };
+async function aplicarArchivo(kind, fid, file, ab){
+  const fd = S[fid];
+  if (kind === "stocks" && /\.xml$/i.test(file.name)) fd.stocks = parseStocksXml(await file.text());
+  else {
+    ab ||= await file.arrayBuffer();
+    if (kind === "cargas")  fd.cargas  = parseCargas(ab, fid);
+    if (kind === "stocks")  fd.stocks  = parseStocksXlsx(ab);
+    if (kind === "plan")    fd.plan    = parsePlan(ab);
+    if (kind === "pedidos") fd.pedidos = parsePedidos(ab);
+  }
+  fd[kind+"Hora"] = nowHM();
+  save(); render();
+  return { cargas: () => `${fd.cargas.total} camiones`, stocks: () => { const n = clasif(fd).rotura.length; return `${n} rotura${n!==1?"s":""}`; }, plan: () => `${fd.plan.length} órdenes`, pedidos: () => `${Object.keys(fd.pedidos).length} referencias` }[kind]();
+}
+function aplicarReales(ab){
+  REAL = parseReales(ab);
+  try { localStorage.setItem(LS_REAL, JSON.stringify(REAL)); } catch(e) {}
+  render();
+  const d = REAL.dias[date];
+  return d ? `noche ${fmtES(date)}: Grela ${d.agrela.N} · Moras ${d.moras.N}` : `${fmtES(REAL.desde)}–${fmtES(REAL.hasta)} (sin datos del ${fmtES(date)})`;
+}
+// Tipo de archivo según su contenido (mismos criterios que Diario Fábrica + cargas reales)
+function detectarTipo(file, ab, xmlText){
+  if (xmlText !== undefined) return /<Row/i.test(xmlText) ? "stocks" : null;
+  const names = XLSX.read(ab, { type:"array", bookSheets:true }).SheetNames;
+  if (names.some(n => n.trim().toLowerCase() === "registros")) return "reales";
+  const wb = XLSX.read(ab, { type:"array", sheetRows:40 });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:null, raw:false });
+  const top = rows.slice(0, 12).map(r => (r||[]).map(c => c == null ? "" : String(c).trim()));
+  const txt = top.map(r => r.join("|")).join("\n").toLowerCase();
+  const header = top[0] || [];
+  if (/hora act\.?\s*fin carga/.test(txt) && /pto\.?\s*expedic/.test(txt)) return "reales";
+  if (/grupo\s*:\s*eg\d+/.test(txt) || /inicio orden/.test(txt)) return "plan";
+  const codes = header.filter(h => /^\d{4}$/.test(h) || /^[A-Z]\d{3}$/.test(h)).length;
+  if (codes >= 1 && /fech\.?\s*carga|nombre agencia|fec\.?\s*pedido|destinatario/.test(txt)) return "pedidos";
+  if (/número de transporte|numero de transporte/.test(txt) || (/transp/.test(txt) && /status/.test(txt))) return "cargas";
+  if (rows.slice(0, 15).some(r => /total pedidos|f[ií]sico|disponible|bloqueado/i.test(String(r?.[0] ?? "")))) return "stocks";
+  return null;
+}
+function fabPorNombre(name){
+  const n = name.toLowerCase();
+  const g = /grela|agrela|1020/.test(n), m = /moras|1100/.test(n);
+  return g && !m ? "agrela" : m && !g ? "moras" : null;
+}
+function preguntar(titulo, texto, opciones){
+  return new Promise(res => {
+    const ov = document.createElement("div"); ov.className = "modal";
+    ov.innerHTML = `<div class="mbox"><h3>${titulo}</h3><p>${texto}</p><div class="mbtns">${opciones.map((o,i) => `<button class="btn" data-i="${i}" style="${o.color?`border-color:${o.color};color:${o.color}`:""}">${o.lbl}</button>`).join("")}</div></div>`;
+    ov.addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (!b) return; ov.remove(); res(opciones[+b.dataset.i].v); });
+    document.body.appendChild(ov);
+  });
+}
+async function cargaMasiva(files, fidDestino){
+  files = [...files].filter(f => /\.(xlsx|xls|xlsb|xml)$/i.test(f.name));
+  if (!files.length) { toast("⚠️ Ningún Excel/XML en lo que has soltado"); return; }
+  const res = [];
+  for (const file of files) {
+    try {
+      toast(`⏳ Leyendo ${file.name}…`);
+      await new Promise(r => setTimeout(r, 40));
+      const isXml = /\.xml$/i.test(file.name);
+      const xmlText = isXml ? await file.text() : undefined;
+      const ab = isXml ? null : await file.arrayBuffer();
+      let tipo = detectarTipo(file, ab, xmlText);
+      if (!tipo) tipo = await preguntar("¿Qué archivo es?", `No reconozco el contenido de <b>${esc(file.name)}</b>.`, [...Object.entries(TIPO_LBL).filter(([k]) => k !== "reales").map(([v,lbl]) => ({ v, lbl })), { v:null, lbl:"Omitir" }]);
+      if (!tipo) { res.push({ ok:false, f:file.name, m:"omitido" }); continue; }
+      if (tipo === "reales") { res.push({ ok:true, f:file.name, t:TIPO_LBL.reales, fab:"Ambas", m:aplicarReales(ab) }); continue; }
+      let fid = fidDestino || fabPorNombre(file.name);
+      if (!fid) fid = await preguntar("¿De qué fábrica es?", `<b>${esc(file.name)}</b><br>${TIPO_LBL[tipo]}`, [...FABS.map(f => ({ v:f.id, lbl:f.label, color:f.color })), { v:null, lbl:"Omitir" }]);
+      if (!fid) { res.push({ ok:false, f:file.name, t:TIPO_LBL[tipo], m:"omitido" }); continue; }
+      const m = await aplicarArchivo(tipo, fid, file, ab);
+      res.push({ ok:true, f:file.name, t:TIPO_LBL[tipo], fab:labelOf(fid), m });
+    } catch(err) { console.error(err); res.push({ ok:false, f:file.name, m:err.message }); }
+  }
+  render();
+  $("#toast").classList.remove("show");
+  await preguntar("Carga masiva", `<table class="tbl" style="margin:0">${res.map(r => `<tr><td>${r.ok?"✅":"⚠️"}</td><td style="font-weight:600">${esc(r.t||"—")}</td><td>${esc(r.fab||"")}</td><td style="color:var(--mut)">${esc(r.m)}</td></tr><tr><td></td><td colspan="3" style="font-size:10.5px;color:var(--dim);padding-top:0">${esc(r.f)}</td></tr>`).join("")}</table>`, [{ v:1, lbl:"Cerrar" }]);
+}
+// Arrastrar y soltar: sobre una tarjeta de fábrica = esa fábrica; en otro sitio = por nombre de archivo
+let dragN = 0;
+document.addEventListener("dragenter", e => { if ([...(e.dataTransfer?.types||[])].includes("Files")) { dragN++; document.body.classList.add("dragging"); } });
+document.addEventListener("dragleave", () => { if (--dragN <= 0) { dragN = 0; document.body.classList.remove("dragging"); document.querySelectorAll(".fab.drop").forEach(x => x.classList.remove("drop")); } });
+document.addEventListener("dragover", e => {
+  if (![...(e.dataTransfer?.types||[])].includes("Files")) return;
+  e.preventDefault();
+  const f = e.target.closest?.(".fab");
+  document.querySelectorAll(".fab.drop").forEach(x => { if (x !== f) x.classList.remove("drop"); });
+  if (f) f.classList.add("drop");
+});
+document.addEventListener("drop", e => {
+  if (!e.dataTransfer?.files?.length) return;
+  e.preventDefault(); dragN = 0; document.body.classList.remove("dragging");
+  const f = e.target.closest?.(".fab"); document.querySelectorAll(".fab.drop").forEach(x => x.classList.remove("drop"));
+  if (present) return;
+  cargaMasiva(e.dataTransfer.files, f ? f.id.replace("f-","") : null);
+});
+
 // ───────────────────────── Eventos ─────────────────────────
 document.addEventListener("change", async (e) => {
   const t = e.target;
   if (t.dataset.up) {
-    const file = t.files[0]; if (!file) return;
-    const fid = t.dataset.fid, fd = S[fid], kind = t.dataset.up;
-    try {
-      if (kind === "stocks" && /\.xml$/i.test(file.name)) { fd.stocks = parseStocksXml(await file.text()); }
-      else {
-        const ab = await file.arrayBuffer();
-        if (kind === "cargas")  fd.cargas  = parseCargas(ab, fid);
-        if (kind === "stocks")  fd.stocks  = parseStocksXlsx(ab);
-        if (kind === "plan")    fd.plan    = parsePlan(ab);
-        if (kind === "pedidos") fd.pedidos = parsePedidos(ab);
-      }
-      fd[kind+"Hora"] = nowHM();
-      save(); render();
-      const msg = { cargas: () => `${fd.cargas.total} camiones`, stocks: () => `${clasif(fd).rotura.length} roturas`, plan: () => `${fd.plan.length} órdenes`, pedidos: () => `${Object.keys(fd.pedidos).length} referencias` }[kind]();
-      toast(`✓ ${labelOf(fid)}: ${msg}`);
-    } catch(err) { console.error(err); toast("⚠️ " + err.message); }
-    t.value = "";
+    const file = t.files[0]; t.value = ""; if (!file) return;
+    try { toast(`✓ ${labelOf(t.dataset.fid)}: ${await aplicarArchivo(t.dataset.up, t.dataset.fid, file)}`); }
+    catch(err) { console.error(err); toast("⚠️ " + err.message); }
     return;
   }
   if (t.dataset.ll) {
@@ -706,18 +799,14 @@ function renderRealesBtn(){
   b.style.borderColor = REAL ? "#22c55e88" : "";
   if (REAL) b.title = `Cargado ${fmtES(REAL.cargado)} ${REAL.hora} · datos del ${fmtES(REAL.desde)} al ${fmtES(REAL.hasta)} · ${REAL.n} cargas`;
 }
+document.addEventListener("change", (e) => { const t = e.target; if (t.dataset && t.dataset.masiva) { const fs = [...t.files]; t.value = ""; cargaMasiva(fs, null); } });
 document.addEventListener("change", async (e) => {
   const t = e.target; if (!t.dataset || !t.dataset.reales) return;
   const file = t.files[0]; t.value = ""; if (!file) return;
   toast("⏳ Procesando " + file.name + "…");
   await new Promise(r => setTimeout(r, 60));
-  try {
-    REAL = parseReales(await file.arrayBuffer());
-    try { localStorage.setItem(LS_REAL, JSON.stringify(REAL)); } catch(e) {}
-    render();
-    const d = REAL.dias[date];
-    toast(d ? `✓ Noche ${fmtES(date)}: Grela ${d.agrela.N} · Moras ${d.moras.N}` : `✓ Cargas reales ${fmtES(REAL.desde)}–${fmtES(REAL.hasta)} (sin datos del ${fmtES(date)})`);
-  } catch(err) { console.error(err); toast("⚠️ " + err.message); }
+  try { toast("✓ Cargas reales: " + aplicarReales(await file.arrayBuffer())); }
+  catch(err) { console.error(err); toast("⚠️ " + err.message); }
 });
 function setPresent(v){
   present = v;
