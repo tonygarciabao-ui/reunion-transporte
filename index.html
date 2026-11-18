@@ -112,6 +112,8 @@
   /* Modo presentación: oculta controles, agranda */
   body.present .uploads, body.present .noprint, body.present #cfg{display:none!important}
   body.present{font-size:15.5px}
+  body.present #bPresent{background:#3b2a55;border-color:var(--violet)}
+  @media print{#bPresent{display:none}}
   body.present .kpi .v, body.present .kpi input{font-size:40px}
   body.present select.situ, body.present input.com{border-color:transparent;-webkit-appearance:none;appearance:none;pointer-events:none}
   @media print{
@@ -126,7 +128,7 @@
   <h1>🚛 Reunión Transporte <span id="hdrDate"></span></h1>
   <input type="date" id="date" class="noprint" title="Día de la reunión"/>
   <label class="btn noprint" id="bReales" title="Extracción SAP de camiones cargados (la misma que pegas en tu Excel de Camiones Cargados). Sirve un archivo para las dos fábricas.">🌙 CARGAS REALES<input type="file" accept=".xlsx,.xls,.xlsb" data-reales="1" style="display:none"/></label>
-  <button class="btn noprint" id="bPresent" title="Oculta controles de carga para proyectar">📽️ Presentar</button>
+  <button class="btn" id="bPresent" title="Modo reunión: solo roturas con sus transportes pendientes (Esc para salir)">📽️ Presentar</button>
   <button class="btn noprint" id="bCopy" title="Copia un resumen en texto para el acta / Teams / correo">📋 Copiar resumen</button>
   <button class="btn noprint" id="bCfg">⚙️</button>
 </header>
@@ -470,7 +472,7 @@ function renderFab(fab){
   const nSrc = nReal !== null ? `real SAP · ${fmtES(addDays(date,-1)).slice(0,5)} 22:00 → ${fmtES(date).slice(0,5)} 06:00` : (nocheAuto(fd) !== null ? `estimado (inicio planificado) · sube 🌙` : "sube 🌙 CARGAS REALES");
   const pct = cg && cg.total ? Math.round(cg.fin / cg.total * 100) : 0;
   const cl = clasif(fd);
-  const filtro = fd.filtro || "rotura";
+  const filtro = present ? "rotura" : (fd.filtro || "rotura");
   const list = cl[filtro] || [];
 
   const kpi = (l, v, color, sub="") => `<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${color}">${v}</div><div class="s">${sub}</div></div>`;
@@ -479,18 +481,19 @@ function renderFab(fab){
   if (!fd.stocks) stockHtml = `<div class="empty">Falta “📂 CARGAR STOCKS”.</div>`;
   else {
     const chip = (k, lbl, col) => `<button class="chip ${filtro===k?"sel":""}" data-filtro="${k}" data-fid="${fab.id}" style="border-color:${col};color:${col}"><b>${cl[k].length}</b>${lbl}</button>`;
-    stockHtml = `<div class="chips" style="align-items:center">${chip("rotura","Roturas","#EF4444")}${chip("justo","Justos","#38BDF8")}${chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}${fd.pedidos ? `<button class="btn noprint" data-expall="${fab.id}" style="margin-left:auto;font-size:12px">${fd.expAll ? "▾ Plegar clientes" : "▸ Desplegar clientes"}</button>` : `<span style="margin-left:auto;font-size:11px;color:var(--mut)">Sube 📋 Pedidos para ver clientes y transportes</span>`}</div>`;
-    if (!list.length) stockHtml += `<div class="empty">Ninguna referencia en este estado.</div>`;
+    stockHtml = `<div class="chips" style="align-items:center">${chip("rotura","Roturas","#EF4444")}${present ? "" : chip("justo","Justos","#38BDF8") + chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}${fd.pedidos ? `<button class="btn noprint" data-expall="${fab.id}" style="margin-left:auto;font-size:12px">${fd.expAll ? "▾ Plegar clientes" : "▸ Desplegar clientes"}</button>` : `<span class="noprint" style="margin-left:auto;font-size:11px;color:var(--mut)">Sube 📋 Pedidos para ver clientes y transportes</span>`}</div>`;
+    if (!list.length) stockHtml += `<div class="empty">${present ? "✅ Sin roturas." : "Ninguna referencia en este estado."}</div>`;
     else {
       stockHtml += `<div class="wrap"><table class="tbl stk"><thead><tr><th>Código</th><th class="n">Pedidos</th><th class="n">Físico</th><th class="n">Disponible</th><th class="n">Bloqueado</th><th class="n">Tránsito</th><th class="n">Diferencia</th><th>Próx. llenado</th><th>Situación</th><th>Clientes</th></tr></thead><tbody>`;
       list.forEach(r => {
         const ll = fd.ll[r.cod] || {};
         const s = SITU_MAP[ll.situ];
         const p = proxLlenado(fd, r.cod);
-        const af = afectados(fd, r.cod);
+        const afAll = afectados(fd, r.cod);
+        const af = afAll && present ? afAll.filter(a => a.e !== "fin") : afAll;
         const nCli = af ? new Set(af.flatMap(a => a.clis)).size : null;
         const nSin = af ? af.filter(a => a.e !== "fin").length : 0;
-        const abierto = !!af && (fd.exp?.[r.cod] ?? !!fd.expAll);
+        const abierto = !!af && af.length > 0 && (present || (fd.exp?.[r.cod] ?? !!fd.expAll));
         const dash = v => v ? fmtN(v) : `<span style="color:#52525B">—</span>`;
         stockHtml += `<tr class="art ${r.diff<0?"rot":r.diff===0?"jus":"ale"} ${abierto?"abierta":""}">
           <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span></td>
@@ -697,7 +700,14 @@ document.addEventListener("change", async (e) => {
     toast(d ? `✓ Noche ${fmtES(date)}: Grela ${d.agrela.N} · Moras ${d.moras.N}` : `✓ Cargas reales ${fmtES(REAL.desde)}–${fmtES(REAL.hasta)} (sin datos del ${fmtES(date)})`);
   } catch(err) { console.error(err); toast("⚠️ " + err.message); }
 });
-$("#bPresent").onclick = () => { present = !present; document.body.classList.toggle("present", present); $("#bPresent").classList.toggle("on", present); };
+function setPresent(v){
+  present = v;
+  document.body.classList.toggle("present", present);
+  $("#bPresent").textContent = present ? "✕ Salir de presentación" : "📽️ Presentar";
+  render();
+}
+$("#bPresent").onclick = () => setPresent(!present);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && present) setPresent(false); });
 $("#bCfg").onclick = () => $("#cfg").classList.toggle("open");
 $("#bCopy").onclick = async () => {
   const txt = resumen();
