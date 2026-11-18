@@ -158,9 +158,9 @@
     <button class="btn" id="bReset" style="border-color:#ef444477;color:#fca5a5">🗑️ Vaciar datos de este día</button>
     <span style="font-size:11px;color:var(--mut);max-width:460px">“Cargados noche” sale de <b>🌙 CARGAS REALES</b> con tus mismas reglas: hora real de fin de carga entre 22:00 y 06:00 (lo de después de las 22:00 cuenta para el día siguiente), carga ≥ 10 min y cada transporte una vez por fábrica. La ventana de aquí solo se usa como estimación si no hay archivo real.</span>
   </div>
+  <section id="global"></section>
   <section class="fab" id="f-agrela" style="--c:#D946EF"></section>
   <section class="fab" id="f-moras"  style="--c:#38BDF8"></section>
-  <section id="global"></section>
 </main>
 <div id="toast"></div>
 
@@ -597,9 +597,6 @@ function renderFab(fab){
 
     <div class="sec">Llenados de envasado ${fd.plan?.length ? `<span style="text-transform:none;letter-spacing:0;font-weight:500">· por grupo</span>`:""}</div>
     ${planHtml}
-
-    <div class="sec">Notas ${fab.label}</div>
-    <textarea data-notas="${fab.id}" placeholder="Incidencias, averías, observaciones…">${esc(fd.notas)}</textarea>
   `;
 }
 
@@ -608,17 +605,13 @@ function renderGlobal(){
   const tot = (k) => FABS.reduce((s,f) => { const c = S[f.id].cargas; return c ? s + (k==="pend" ? c.pendientes + c.registrados : c[k]) : s; }, 0);
   const anyC = FABS.some(f => S[f.id].cargas);
   const noche = FABS.reduce((s,f) => s + (nocheVal(S[f.id]) || 0), 0);
-  const rot = FABS.reduce((s,f) => s + clasif(S[f.id]).rotura.length, 0);
   el.innerHTML = `
-    <h2 style="color:var(--violet);font-size:16px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">📊 Total grupo · ${fmtES(date)}</h2>
-    <div class="kpis">
+    <h2 style="color:var(--violet);font-size:16px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">📊 Total grupo · ${fmtES(date)}</h2>
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi"><div class="l">TOTALES</div><div class="v">${anyC ? tot("total") : "—"}</div></div>
       <div class="kpi"><div class="l">PENDIENTES</div><div class="v" style="color:#EF4444">${anyC ? tot("pend") : "—"}</div></div>
       <div class="kpi"><div class="l">CARGADOS NOCHE</div><div class="v" style="color:var(--violet)">${anyC || noche ? noche : "—"}</div></div>
-      <div class="kpi"><div class="l">ROTURAS</div><div class="v" style="color:#EF4444">${FABS.some(f=>S[f.id].stocks) ? rot : "—"}</div></div>
     </div>
-    <div class="sec">Acuerdos de la reunión</div>
-    <textarea data-global="1" placeholder="Acuerdos, responsables, seguimiento…">${esc(S.global)}</textarea>
   `;
 }
 
@@ -651,10 +644,8 @@ function resumen(){
         L.push(parts.join(" · "));
       });
     }
-    if (fd.notas.trim()) L.push(`  Notas: ${fd.notas.trim()}`);
     L.push("");
   });
-  if (S.global.trim()) { L.push("■ ACUERDOS"); L.push(S.global.trim()); }
   return L.join("\n");
 }
 
@@ -785,9 +776,7 @@ document.addEventListener("change", async (e) => {
 });
 document.addEventListener("input", (e) => {
   const t = e.target;
-  if (t.dataset.notas) { S[t.dataset.notas].notas = t.value; save(); }
-  else if (t.dataset.global) { S.global = t.value; save(); }
-  else if (t.dataset.noche) { S[t.dataset.noche].nocheManual = t.value; save(); }
+  if (t.dataset.noche) { S[t.dataset.noche].nocheManual = t.value; save(); }
 });
 document.addEventListener("focusout", (e) => { if (e.target.dataset.noche) render(); });
 document.addEventListener("click", (e) => {
