@@ -92,7 +92,8 @@
   .po:first-of-type{border-top:none}
   .po b{font-variant-numeric:tabular-nums}
   .po .ds{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .po .t{grid-column:1/-1;color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
+  .po .t{grid-column:1/-1;color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums;display:flex;gap:8px}
+  .po .qty{margin-left:auto;color:#E5E7EB;white-space:nowrap}
   .po.done{opacity:.38}
   .po.now{border-left-color:#22c55e;background:#0a3d1f55}
   .po.now .t{color:#6ee7a0}
@@ -285,6 +286,21 @@ function parsePlan(ab){
   };
   const norm = v => { if (!v) return ""; let s = String(v).trim().replace(/\xa0/g,""); if (/^700\d/.test(s)) return s.slice(3).padStart(4,"0"); if (/^70[A-Z]/.test(s)) return s.slice(2); if (/^70\d/.test(s)) return s.slice(2).padStart(4,"0"); const n = parseFloat(s); return isNaN(n) ? s : String(Math.round(n)).slice(-4).padStart(4,"0"); };
   let grp = "", iCod=-1, iDesc=-1, iHi=-1, iHf=-1; const out = [];
+  // Formato nuevo (tabla plana "Envasado por grupo"): Grupo | Hora inicio grupo | Estado | No Orden | Código | Descripción | … | Cantidad Restante | UMBase | … | Inicio Orden | Fin Orden
+  const hdrRow = (() => { for (let r = 0; r <= Math.min(range.e.r, 15); r++) { const v = []; for (let c = 0; c <= range.e.c; c++) v.push(cs(gv(r,c)).toLowerCase()); if (v.includes("grupo") && v.includes("código") && v.includes("inicio orden")) return { r, v }; } return null; })();
+  if (hdrRow) {
+    const ix = n => hdrRow.v.indexOf(n);
+    const cG = ix("grupo"), cC = ix("código"), cD = ix("descripción"), cE = ix("estado"), cR = ix("cantidad restante"), cU = ix("umbase"), cI = ix("inicio orden"), cF = ix("fin orden");
+    for (let r = hdrRow.r + 1; r <= range.e.r; r++) {
+      const gRaw = cs(gv(r, cG)), cRaw = gv(r, cC);
+      if (!gRaw || !cRaw) continue;
+      const m = gRaw.match(/^EG0*(\d+)([A-Z]*)$/i);
+      const g = m ? `GRUPO ${parseInt(m[1])}${m[2].toUpperCase()}` : gRaw;
+      const a = hd(gv(r, cI)), b = hd(gv(r, cF));
+      const cod = norm(cRaw);
+      if (cod && (a.h || b.h)) out.push({ g, cod, desc: cD>=0 ? cs(gv(r,cD)) : "", d:a.d, hi:a.h, df:b.d||a.d, hf:b.h, est: cE>=0 ? cs(gv(r,cE)) : "", rest: cR>=0 ? cs(gv(r,cR)) : "", um: cU>=0 ? cs(gv(r,cU)) : "" });
+    }
+  } else
   for (let r = 0; r <= range.e.r; r++) {
     const raw = [], vals = [];
     for (let c = 0; c <= range.e.c; c++) { const v = gv(r,c); raw.push(v); vals.push(cs(v)); }
@@ -529,13 +545,13 @@ function renderFab(fab){
       const vis = ocultar ? ords.filter(p => estadoOrden(p) !== "done") : ords;
       const nDone = ords.length - ords.filter(p => estadoOrden(p) !== "done").length;
       const hit = vis.some(p => riesgo.has(p.cod));
-      const rows = vis.map(p => { const e = estadoOrden(p); return `<div class="po ${e} ${riesgo.has(p.cod)?"hit":""}"><b>${esc(p.cod)}</b><span class="ds" title="${esc(p.desc)}">${esc(p.desc.replace(/_\d+$/,""))}</span><span class="t">${e==="now"?"▶ ":""}${esc(p.d)} ${esc(p.hi)} → ${p.df!==p.d?esc(p.df)+" ":""}${esc(p.hf)}</span></div>`; }).join("");
+      const rows = vis.map(p => { const e = estadoOrden(p); return `<div class="po ${e} ${riesgo.has(p.cod)?"hit":""}"><b>${esc(p.cod)}</b><span class="ds" title="${esc(p.desc)}">${esc(p.desc.replace(/_\d+$/,""))}</span><span class="t">${e==="now"?"▶ ":""}${esc(p.d)} ${esc(p.hi)} → ${p.df!==p.d?esc(p.df)+" ":""}${esc(p.hf)}${p.rest ? `<span class="qty">${esc(p.rest)} ${esc(p.um)}${p.est && !/liberada/i.test(p.est) ? ` · ${esc(p.est)}` : ""}</span>` : ""}</span></div>`; }).join("");
       return `<div class="gc ${hit?"hit":""}"><h4>${esc(g)}<small>${ocultar && nDone ? nDone+" terminada"+(nDone>1?"s":"") : ""}</small></h4>${rows || `<div class="empty">Sin órdenes pendientes</div>`}</div>`;
     };
     const nG = Object.keys(grupos).length;
     const gHit = Object.entries(grupos).filter(([g,o]) => o.some(p => riesgo.has(p.cod) && estadoOrden(p) !== "done")).map(([g]) => g.replace("GRUPO ","G"));
     planHtml = `<details data-planopen="${fab.id}" ${fd.planOpen?"open":""}><summary style="font-size:13px;font-weight:600;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:8px">▸ Ver plan por grupos (${nG} grupos)${gHit.length?` · <span style="color:#fca5a5">cubren roturas: ${gHit.join(", ")}</span>`:""}</summary><div style="margin-top:8px"><div class="leg"><span><i style="background:#22c55e"></i>En curso ahora</span><span><i style="background:#ef4444"></i>Cubre rotura / justo</span><label style="margin-left:auto;cursor:pointer" class="noprint"><input type="checkbox" data-ocultarfin="${fab.id}" ${ocultar?"checked":""}/> Ocultar órdenes terminadas</label></div>
-      <div class="grupos">${Object.entries(grupos).sort((x,y)=>gnum(x[0])-gnum(y[0])).map(card).join("")}</div></div></details>`;
+      <div class="grupos">${Object.entries(grupos).sort((x,y)=>gnum(x[0])-gnum(y[0]) || x[0].localeCompare(y[0])).map(card).join("")}</div></div></details>`;
   }
 
   el.innerHTML = `
