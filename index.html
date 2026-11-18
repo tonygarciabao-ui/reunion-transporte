@@ -52,6 +52,13 @@
   .tbl td{padding:5px 6px;border-bottom:1px solid #2c2c36;vertical-align:top}
   .tbl td.n{text-align:right;font-variant-numeric:tabular-nums}
   .tbl tr.cc td{background:#3b2a5533}
+  .afbtn{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:700;color:#c4b5fd;background:#22103d;border:1px solid #8b5cf666;border-radius:5px;padding:1px 6px;cursor:pointer;white-space:nowrap}
+  .afbtn.open{background:#3b2a55}
+  .tbl tr.det>td{background:#0f0f14;padding:4px 8px 10px 22px}
+  .af{width:100%;border-collapse:collapse;font-size:12px}
+  .af th{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:3px 6px;font-weight:700}
+  .af td{padding:3px 6px;border-top:1px solid #23232b}
+  .af tr.fin td{opacity:.45}
   .wrap{overflow-x:auto}
   .cod{font-weight:800;color:var(--c)}
   .desc{display:block;font-size:10.5px;color:var(--mut);font-weight:400;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -201,6 +208,7 @@ function parseCargas(ab, fid){
     total: pend.length + reg.length + enc.length + fin.length,
     pendientes: pend.length, registrados: reg.length, enCarga: enc.length, fin: fin.length,
     finList: fin.map(c => ({ n:c.n, cli:c.cli, ag:c.ag, ini:c.ini })),
+    mapa: Object.fromEntries(uniq.map(c => [c.n, { e: isFin(c) ? "fin" : isEnCarga(c) ? "enc" : isReg(c) ? "reg" : isPend(c) ? "pend" : "", ag:c.ag, ini:c.ini }])),
   };
 }
 
@@ -282,13 +290,17 @@ function parsePedidos(ab){
   const h = rows[0].map(x => x ? String(x).trim() : "");
   const find = (names) => { for (const n of names) { const i = h.findIndex(x => x && x.toLowerCase().includes(n.toLowerCase())); if (i>=0) return i; } return -1; };
   const iCli = find(["Nombre Destinatario","destinatario"]), iTr = find(["Transp.","Transporte"]);
+  const iFc = find(["Fech.Carga","Fecha Carga"]), iHc = find(["Hora Carga"]), iAg = find(["Nombre Agencia","Agencia","transportista"]);
+  const fFecha = v => { if (v === null || v === undefined || v === "") return ""; if (typeof v === "number") { const d = new Date(Math.round((v-25569)*864e5)); return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}`; } const m = String(v).match(/^(\d{1,2})[./](\d{1,2})/); return m ? `${pad(m[1])}/${pad(m[2])}` : String(v).trim(); };
+  const fHora = v => { if (v === null || v === undefined || v === "") return ""; if (typeof v === "number") { const t = Math.round((v-Math.floor(v))*1440); return `${pad(Math.floor(t/60)%24)}:${pad(t%60)}`; } const m = String(v).match(/(\d{1,2}):(\d{2})/); return m ? `${pad(m[1])}:${m[2]}` : String(v).trim(); };
   const prod = {}; h.forEach((x,i) => { if (/^\d{4}$/.test(x) || /^[A-Z]\d{3}$/.test(x)) prod[x] = i; });
   const map = {};
   rows.slice(1).forEach(r => {
     const cli = iCli>=0 && r[iCli] ? String(r[iCli]).trim() : "", tr = iTr>=0 && r[iTr] ? String(r[iTr]).trim() : "";
+    const fc = iFc>=0 ? fFecha(r[iFc]) : "", hc = iHc>=0 ? fHora(r[iHc]) : "", ag = iAg>=0 && r[iAg] ? String(r[iAg]).trim() : "";
     Object.entries(prod).forEach(([cod,ci]) => {
       const q = typeof r[ci] === "number" ? r[ci] : parseFloat(String(r[ci]??"").replace(",","."));
-      if (!isNaN(q) && q > 0) (map[cod] ||= []).push({ cli, tr, q });
+      if (!isNaN(q) && q > 0) (map[cod] ||= []).push({ cli, tr, q, fc, hc, ag });
     });
   });
   return map;
@@ -359,6 +371,28 @@ function nocheReal(fid){
   const d = REAL.dias[date];
   if (d) return d[fid].N;
   return (date >= REAL.desde && date <= REAL.hasta) ? 0 : null;
+}
+
+// ───────────────────────── Afectados (Pedidos × Cargas) ─────────────────────────
+const EST = {
+  pend: { t:"Pendiente",  c:"#fcd34d", o:0 },
+  reg:  { t:"Registrado", c:"#7dd3fc", o:1 },
+  enc:  { t:"En carga",   c:"#6ee7a0", o:2 },
+  fin:  { t:"Cargado",    c:"#71717a", o:4 },
+  "":   { t:"No está en Cargas del día", c:"#a1a1aa", o:3 },
+};
+function afectados(fd, cod){
+  const ls = fd.pedidos?.[cod]; if (!ls) return null;
+  const by = {};
+  ls.forEach(x => {
+    const k = x.tr || "(sin transporte) " + x.cli;
+    const a = (by[k] ||= { tr:x.tr, clis:new Set(), q:0, fc:x.fc, hc:x.hc, ag:x.ag });
+    if (x.cli) a.clis.add(x.cli); a.q += x.q;
+  });
+  const mapa = fd.cargas?.mapa || {};
+  const out = Object.values(by).map(a => { const m = mapa[a.tr]; return { ...a, clis:[...a.clis], e: m ? m.e : "", ag: a.ag || m?.ag || "", ini: m?.ini || "" }; });
+  out.sort((a,b) => EST[a.e].o - EST[b.e].o || (a.fc+a.hc).localeCompare(b.fc+b.hc));
+  return out;
 }
 
 // ───────────────────────── Cálculos ─────────────────────────
@@ -441,7 +475,7 @@ function renderFab(fab){
   if (!fd.stocks) stockHtml = `<div class="empty">Falta “📂 CARGAR STOCKS”.</div>`;
   else {
     const chip = (k, lbl, col) => `<button class="chip ${filtro===k?"sel":""}" data-filtro="${k}" data-fid="${fab.id}" style="border-color:${col};color:${col}"><b>${cl[k].length}</b>${lbl}</button>`;
-    stockHtml = `<div class="chips">${chip("rotura","Roturas","#EF4444")}${chip("justo","Justos","#38BDF8")}${chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}</div>`;
+    stockHtml = `<div class="chips" style="align-items:center">${chip("rotura","Roturas","#EF4444")}${chip("justo","Justos","#38BDF8")}${chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}${fd.pedidos ? `<button class="btn noprint" data-expall="${fab.id}" style="margin-left:auto;font-size:12px">${fd.expAll ? "▾ Plegar clientes" : "▸ Desplegar clientes"}</button>` : `<span style="margin-left:auto;font-size:11px;color:var(--mut)">Sube 📋 Pedidos para ver clientes y transportes</span>`}</div>`;
     if (!list.length) stockHtml += `<div class="empty">Ninguna referencia en este estado.</div>`;
     else {
       stockHtml += `<div class="wrap"><table class="tbl"><thead><tr><th>Cód.</th><th class="n">Pedidos</th><th class="n">Disp.</th><th class="n">Dif.</th><th>Próx. llenado</th><th>Situación</th><th>Cambio de centro</th><th>Comentario</th></tr></thead><tbody>`;
@@ -451,9 +485,12 @@ function renderFab(fab){
         const p = proxLlenado(fd, r.cod);
         const cc = r.diff < 0 ? cambioCentro(fab.id, r) : null;
         const ccs = cc ? CC_STY[cc.k] : null;
-        const nCli = fd.pedidos?.[r.cod] ? new Set(fd.pedidos[r.cod].map(x=>x.cli)).size : null;
+        const af = afectados(fd, r.cod);
+        const nCli = af ? new Set(af.flatMap(a => a.clis)).size : null;
+        const nSin = af ? af.filter(a => a.e !== "fin").length : 0;
+        const abierto = af && (fd.exp?.[r.cod] ?? !!fd.expAll);
         stockHtml += `<tr class="${ll.cambio?"cc":""}">
-          <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span><span class="desc" title="${esc(descOf(fab.id,r.cod))}">${esc(descOf(fab.id,r.cod))}</span>${nCli!==null?`<span class="desc">${nCli} cliente${nCli!==1?"s":""}</span>`:""}</td>
+          <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span><span class="desc" title="${esc(descOf(fab.id,r.cod))}">${esc(descOf(fab.id,r.cod))}</span>${af ? `<br><span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes y transportes">${abierto?"▾":"▸"} ${nCli} cli. · ${af.length} transp.${fd.cargas && nSin !== af.length ? ` · ${nSin} sin cargar` : ""}</span>` : ""}</td>
           <td class="n">${fmtN(r.ped)}</td>
           <td class="n" style="${r.dis<0?"color:#EF4444;font-weight:700":""}">${fmtN(r.dis)}</td>
           <td class="n" style="font-weight:800;color:${r.diff<0?"#EF4444":r.diff===0?"#38BDF8":"#F59E0B"}">${fmtN(r.diff)}</td>
@@ -462,6 +499,7 @@ function renderFab(fab){
           <td>${cc ? `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-ll="cambio" data-fid="${fab.id}" data-cod="${esc(r.cod)}" ${ll.cambio?"checked":""} title="Marcar como cambio de centro propuesto"/><span class="tag" style="background:${ccs[0]};color:${ccs[1]};border-color:${ccs[2]}">${esc(cc.txt)}</span></label>` : `<span style="color:#606070">—</span>`}</td>
           <td><input class="com" data-ll="com" data-fid="${fab.id}" data-cod="${esc(r.cod)}" value="${esc(ll.com||"")}" placeholder="…"/></td>
         </tr>`;
+        if (abierto) stockHtml += `<tr class="det"><td colspan="8"><table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap;color:var(--mut)">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td style="color:var(--mut)">${esc(a.ag)}</td><td style="white-space:nowrap;color:${EST[a.e].c};font-weight:600">${fd.cargas ? EST[a.e].t : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table></td></tr>`;
       });
       stockHtml += `</tbody></table></div>`;
     }
@@ -574,6 +612,8 @@ function resumen(){
         if (ll.situ) parts.push(ll.situ);
         if (ll.cambio) parts.push(`→ CAMBIO A ${labelOf(otra(f.id)).toUpperCase()} (${cambioCentro(f.id, r).txt})`);
         if (ll.com) parts.push(ll.com);
+        const af = afectados(fd, r.cod);
+        if (af) { const sin = af.filter(a => a.e !== "fin"); if (sin.length) parts.push(`afecta: ${sin.map(a => `${a.tr} ${a.clis.join("/")}`).join("; ")}`); }
         L.push(parts.join(" · "));
       });
     }
@@ -632,8 +672,10 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("focusout", (e) => { if (e.target.dataset.noche) render(); });
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-filtro],[data-nocheclr]");
+  const t = e.target.closest("[data-filtro],[data-nocheclr],[data-exp],[data-expall]");
   if (!t) return;
+  if (t.dataset.exp) { const fd = S[t.dataset.fid]; fd.exp ||= {}; fd.exp[t.dataset.exp] = !(fd.exp[t.dataset.exp] ?? !!fd.expAll); save(); render(); return; }
+  if (t.dataset.expall) { const fd = S[t.dataset.expall]; fd.expAll = !fd.expAll; fd.exp = {}; save(); render(); return; }
   if (t.dataset.filtro) { S[t.dataset.fid].filtro = t.dataset.filtro; save(); render(); }
   if (t.dataset.nocheclr) { e.preventDefault(); S[t.dataset.nocheclr].nocheManual = ""; save(); render(); }
 });
