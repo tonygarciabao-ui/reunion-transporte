@@ -78,6 +78,7 @@
   .af th{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:3px 6px;font-weight:700}
   .af td{padding:3px 6px;border-top:1px solid #3F3F46}
   .af tr.fin td{opacity:.45}
+  .est{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.06em;border:1px solid;border-radius:4px;padding:1px 6px;background:#0008}
   .wrap{overflow-x:auto}
   .cod{font-weight:800;color:var(--c)}
   .desc{display:block;font-size:10.5px;color:var(--mut);font-weight:400;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -420,11 +421,12 @@ function nocheReal(fid){
 
 // ───────────────────────── Afectados (Pedidos × Cargas) ─────────────────────────
 const EST = {
-  pend: { t:"Pendiente",  c:"#fcd34d", o:0 },
-  reg:  { t:"Registrado", c:"#7dd3fc", o:1 },
-  enc:  { t:"En carga",   c:"#6ee7a0", o:2 },
-  fin:  { t:"Cargado",    c:"#71717a", o:4 },
-  "":   { t:"No está en Cargas del día", c:"#FFFFFF", o:3 },
+  // Mismos colores que Diario Fábrica: CAR (en carga) rojo, REG (registrado) verde; el resto, PEND
+  enc:  { t:"CAR",     c:"#ef4444", bg:"#5c1010", o:0, tip:"En carga" },
+  reg:  { t:"REG",     c:"#4ade80", bg:"#0f5530", o:1, tip:"Registrado en báscula, esperando muelle" },
+  pend: { t:"PEND",    c:"#fcd34d", bg:"",        o:2, tip:"Pendiente: ni registrado ni en carga" },
+  "":   { t:"PEND",    c:"#fcd34d", bg:"",        o:2, tip:"Pendiente: no aparece en el Excel de Cargas del día (suele ser de otro día)" },
+  fin:  { t:"CARGADO", c:"#71717a", bg:"",        o:4, tip:"Carga finalizada" },
 };
 function afectados(fd, cod){
   const ls = fd.pedidos?.[cod]; if (!ls) return null;
@@ -535,7 +537,7 @@ function renderFab(fab){
           <td>${af ? `<span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes y transportes">${abierto?"▾":"▸"} ${nCli} cliente${nCli!==1?"s":""}</span>` : `<span style="color:#606070">—</span>`}${af && fd.cargas && nSin !== af.length ? `<span class="desc">${nSin} sin cargar</span>` : ""}</td>
         </tr>`;
         if (abierto) {
-          const tabla = af ? `<table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td>${esc(a.ag)}</td><td style="white-space:nowrap;color:${EST[a.e].c};font-weight:600">${fd.cargas ? EST[a.e].t : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
+          const tabla = af ? `<table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}" style="${fd.cargas && EST[a.e].bg ? `background:${EST[a.e].bg}` : ""}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td>${esc(a.ag)}</td><td style="white-space:nowrap">${fd.cargas ? `<span class="est" title="${EST[a.e].tip}" style="color:${EST[a.e].c};border-color:${EST[a.e].c}66">${EST[a.e].t}</span>` : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
           stockHtml += `<tr class="det"><td colspan="10">${tabla}</td></tr>`;
         }
       });
