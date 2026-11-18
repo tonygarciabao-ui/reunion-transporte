@@ -60,11 +60,23 @@
   input.com{width:100%;min-width:110px;background:transparent;border:none;border-bottom:1px dashed var(--line2);padding:2px;font-size:12px}
   textarea{width:100%;min-height:70px;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:8px;resize:vertical}
   .empty{color:var(--dim);font-style:italic;font-size:12px;padding:6px 0}
-  .plan{display:flex;flex-direction:column;gap:4px}
-  .pl{display:flex;gap:8px;align-items:center;font-size:12px;background:var(--panel);border-radius:6px;padding:4px 8px;border-left:3px solid #22c55e}
-  .pl.hit{border-left-color:var(--red)}
-  .pl .g{font-weight:800;color:#6ee7a0;min-width:66px}
-  .pl .t{color:var(--mut);font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}
+  .grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+  .gc{background:var(--panel);border:1px solid var(--line);border-top:3px solid #22c55e;border-radius:10px;padding:8px 10px;min-width:0}
+  .gc.hit{border-top-color:var(--red)}
+  .gc h4{font-size:13px;font-weight:800;color:#6ee7a0;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+  .gc h4 small{font-weight:600;color:var(--mut);font-size:10px}
+  .po{display:grid;grid-template-columns:auto 1fr;column-gap:8px;font-size:12px;padding:4px 0 4px 6px;border-top:1px solid #2c2c36;border-left:3px solid transparent}
+  .po:first-of-type{border-top:none}
+  .po b{font-variant-numeric:tabular-nums}
+  .po .ds{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .po .t{grid-column:1/-1;color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
+  .po.done{opacity:.38}
+  .po.now{border-left-color:#22c55e;background:#0a3d1f55}
+  .po.now .t{color:#6ee7a0}
+  .po.hit{border-left-color:var(--red)}
+  .po.hit b{color:#fca5a5}
+  .leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mut);margin-bottom:8px}
+  .leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
   #global{grid-column:1/-1;background:#161620;border:1px solid var(--line);border-top:3px solid var(--violet);border-radius:12px;padding:16px}
   #cfg{display:none;grid-column:1/-1;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:14px;gap:16px;flex-wrap:wrap;align-items:end}
   #cfg.open{display:flex}
@@ -317,9 +329,25 @@ function cambioCentro(fid, r){
 }
 const CC_STY = { si:["#0a3d1f","#6ee7a0","#22c55e"], parcial:["#3d2200","#fcd34d","#f59e0b"], no:["#1c1c22","#9CA3AF","#3F3F46"], nd:["#1c1c22","#606070","#2A2A35"] };
 
+// Fecha/hora de una orden ("DD/MM" + "HH:MM") en el año de la reunión (con cruce de año)
+function planTs(dm, hm){
+  const m = String(dm||"").match(/^(\d{2})\/(\d{2})$/), t = toMin(hm);
+  if (!m || t === null) return null;
+  const [y, mm] = date.split("-").map(Number);
+  let yr = y; if (mm === 12 && +m[2] === 1) yr++; if (mm === 1 && +m[2] === 12) yr--;
+  return new Date(yr, +m[2]-1, +m[1], Math.floor(t/60), t%60).getTime();
+}
+// Momento de referencia: ahora si es hoy; si no, las 08:00 del día de la reunión
+function refTs(){ return date === localISO() ? Date.now() : new Date(date+"T08:00:00").getTime(); }
+function estadoOrden(p){
+  const a = planTs(p.d, p.hi), b = planTs(p.df, p.hf), r = refTs();
+  if (b !== null && b <= r) return "done";
+  if (a !== null && a <= r) return "now";
+  return "next";
+}
 function proxLlenado(fd, cod){
   const ps = (fd.plan||[]).filter(p => p.cod === cod);
-  return ps[0] || null;
+  return ps.find(p => estadoOrden(p) !== "done") || null;
 }
 function descOf(fid, cod){
   for (const f of [fid, otra(fid)]) { const p = (S[f].plan||[]).find(x => x.cod === cod && x.desc); if (p) return p.desc; }
@@ -373,11 +401,19 @@ function renderFab(fab){
   let planHtml;
   if (!fd.plan?.length) planHtml = `<div class="empty">Falta “📂 CARGAR PLANIFICACIÓN”.</div>`;
   else {
-    const hits = fd.plan.filter(p => riesgo.has(p.cod));
-    const rest = fd.plan.filter(p => !riesgo.has(p.cod));
-    const row = p => `<div class="pl ${riesgo.has(p.cod)?"hit":""}"><span class="g">${esc(p.g)}</span><span><b>${esc(p.cod)}</b> <span style="color:var(--mut)">${esc(p.desc)}</span></span><span class="t">${esc(p.d)} ${esc(p.hi)} → ${esc(p.df)} ${esc(p.hf)}</span></div>`;
-    planHtml = `<div class="plan">${hits.length ? hits.map(row).join("") : `<div class="empty">Ningún llenado planificado cubre las roturas actuales.</div>`}</div>
-      <details style="margin-top:6px"><summary style="font-size:12px;color:var(--mut)">▸ Ver resto del plan (${rest.length})</summary><div class="plan" style="margin-top:6px">${rest.map(row).join("")}</div></details>`;
+    const grupos = {};
+    fd.plan.forEach(p => (grupos[p.g] ||= []).push(p));
+    const gnum = g => { const m = g.match(/(\d+)/); return m ? +m[1] : 999; };
+    const ocultar = fd.ocultarFin !== false;
+    const card = ([g, ords]) => {
+      const vis = ocultar ? ords.filter(p => estadoOrden(p) !== "done") : ords;
+      const nDone = ords.length - ords.filter(p => estadoOrden(p) !== "done").length;
+      const hit = vis.some(p => riesgo.has(p.cod));
+      const rows = vis.map(p => { const e = estadoOrden(p); return `<div class="po ${e} ${riesgo.has(p.cod)?"hit":""}"><b>${esc(p.cod)}</b><span class="ds" title="${esc(p.desc)}">${esc(p.desc.replace(/_\d+$/,""))}</span><span class="t">${e==="now"?"▶ ":""}${esc(p.d)} ${esc(p.hi)} → ${p.df!==p.d?esc(p.df)+" ":""}${esc(p.hf)}</span></div>`; }).join("");
+      return `<div class="gc ${hit?"hit":""}"><h4>${esc(g)}<small>${ocultar && nDone ? nDone+" terminada"+(nDone>1?"s":"") : ""}</small></h4>${rows || `<div class="empty">Sin órdenes pendientes</div>`}</div>`;
+    };
+    planHtml = `<div class="leg"><span><i style="background:#22c55e"></i>En curso ahora</span><span><i style="background:#ef4444"></i>Cubre rotura / justo</span><label style="margin-left:auto;cursor:pointer" class="noprint"><input type="checkbox" data-ocultarfin="${fab.id}" ${ocultar?"checked":""}/> Ocultar órdenes terminadas</label></div>
+      <div class="grupos">${Object.entries(grupos).sort((x,y)=>gnum(x[0])-gnum(y[0])).map(card).join("")}</div>`;
   }
 
   el.innerHTML = `
@@ -404,7 +440,7 @@ function renderFab(fab){
     <div class="sec">Stocks · roturas y cambios de centro</div>
     ${stockHtml}
 
-    <div class="sec">Llenados de envasado ${fd.plan?.length ? `<span style="text-transform:none;letter-spacing:0;font-weight:500">· en rojo los que cubren roturas/justos</span>`:""}</div>
+    <div class="sec">Llenados de envasado ${fd.plan?.length ? `<span style="text-transform:none;letter-spacing:0;font-weight:500">· por grupo</span>`:""}</div>
     ${planHtml}
 
     <div class="sec">Notas ${fab.label}</div>
@@ -505,6 +541,7 @@ document.addEventListener("change", async (e) => {
     else renderGlobal();
     return;
   }
+  if (t.dataset.ocultarfin) { S[t.dataset.ocultarfin].ocultarFin = t.checked; save(); render(); return; }
   if (t.id === "date") { date = t.value || localISO(); S = load(date); render(); return; }
   if (t.id === "cNocheIni" || t.id === "cNocheFin" || t.id === "cUmbral") {
     cfg.nocheIni = $("#cNocheIni").value || "22:00";
