@@ -54,7 +54,14 @@
   .tbl tr.cc td{background:#3b2a5533}
   .afbtn{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:700;color:#c4b5fd;background:#22103d;border:1px solid #8b5cf666;border-radius:5px;padding:1px 6px;cursor:pointer;white-space:nowrap}
   .afbtn.open{background:#3b2a55}
-  .tbl tr.det>td{background:#0f0f14;padding:4px 8px 10px 22px}
+  .tbl tr.det>td{background:#0f0f14;padding:6px 8px 10px 22px}
+  .tbl.stk>tbody>tr>td{border-bottom:2px solid #4A4A5A;vertical-align:middle}
+  .tbl.stk>tbody>tr.abierta>td{border-bottom:1px dashed #3F3F46}
+  .tbl.stk th{border-bottom:2px solid #6A6A7A}
+  .tbl.stk td,.tbl.stk th{padding-left:5px;padding-right:5px}
+  .tbl.stk .tag{font-size:10.5px}
+  .detx{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .dl{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap}
   .af{width:100%;border-collapse:collapse;font-size:12px}
   .af th{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:3px 6px;font-weight:700}
   .af td{padding:3px 6px;border-top:1px solid #23232b}
@@ -478,7 +485,7 @@ function renderFab(fab){
     stockHtml = `<div class="chips" style="align-items:center">${chip("rotura","Roturas","#EF4444")}${chip("justo","Justos","#38BDF8")}${chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}${fd.pedidos ? `<button class="btn noprint" data-expall="${fab.id}" style="margin-left:auto;font-size:12px">${fd.expAll ? "▾ Plegar clientes" : "▸ Desplegar clientes"}</button>` : `<span style="margin-left:auto;font-size:11px;color:var(--mut)">Sube 📋 Pedidos para ver clientes y transportes</span>`}</div>`;
     if (!list.length) stockHtml += `<div class="empty">Ninguna referencia en este estado.</div>`;
     else {
-      stockHtml += `<div class="wrap"><table class="tbl"><thead><tr><th>Cód.</th><th class="n">Pedidos</th><th class="n">Disp.</th><th class="n">Dif.</th><th>Próx. llenado</th><th>Situación</th><th>Cambio de centro</th><th>Comentario</th></tr></thead><tbody>`;
+      stockHtml += `<div class="wrap"><table class="tbl stk"><thead><tr><th>Código</th><th class="n">Pedidos</th><th class="n">Físico</th><th class="n">Disponible</th><th class="n">Bloqueado</th><th class="n">Tránsito</th><th class="n">Diferencia</th><th>Próx. llenado</th><th>Situación</th><th>Clientes</th></tr></thead><tbody>`;
       list.forEach(r => {
         const ll = fd.ll[r.cod] || {};
         const s = SITU_MAP[ll.situ];
@@ -488,18 +495,26 @@ function renderFab(fab){
         const af = afectados(fd, r.cod);
         const nCli = af ? new Set(af.flatMap(a => a.clis)).size : null;
         const nSin = af ? af.filter(a => a.e !== "fin").length : 0;
-        const abierto = af && (fd.exp?.[r.cod] ?? !!fd.expAll);
-        stockHtml += `<tr class="${ll.cambio?"cc":""}">
-          <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span><span class="desc" title="${esc(descOf(fab.id,r.cod))}">${esc(descOf(fab.id,r.cod))}</span>${af ? `<br><span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes y transportes">${abierto?"▾":"▸"} ${nCli} cli. · ${af.length} transp.${fd.cargas && nSin !== af.length ? ` · ${nSin} sin cargar` : ""}</span>` : ""}</td>
+        const abierto = fd.exp?.[r.cod] ?? !!fd.expAll;
+        const dash = v => v ? fmtN(v) : `<span style="color:#52525B">—</span>`;
+        const marca = (ll.cambio ? " 🔁" : "") + (ll.com ? " 💬" : "");
+        stockHtml += `<tr class="${ll.cambio?"cc":""} ${abierto?"abierta":""}">
+          <td><span class="cod" style="${s?"color:"+s.txt:""}">${esc(r.cod)}</span><span class="desc" title="${esc(descOf(fab.id,r.cod))}">${esc(descOf(fab.id,r.cod))}</span></td>
           <td class="n">${fmtN(r.ped)}</td>
+          <td class="n">${fmtN(r.fis)}</td>
           <td class="n" style="${r.dis<0?"color:#EF4444;font-weight:700":""}">${fmtN(r.dis)}</td>
-          <td class="n" style="font-weight:800;color:${r.diff<0?"#EF4444":r.diff===0?"#38BDF8":"#F59E0B"}">${fmtN(r.diff)}</td>
+          <td class="n" style="color:${r.bloq>0?"#F97316":"inherit"}">${dash(r.bloq)}</td>
+          <td class="n" style="color:${r.tra>0?"#3B82F6":"inherit"}">${dash(r.tra)}</td>
+          <td class="n" style="font-weight:800;color:${r.diff<0?"#EF4444":r.diff===0?"#38BDF8":"#F59E0B"}">${r.diff.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
           <td>${p ? `<span class="tag" style="background:#0a3d1f;color:#6ee7a0;border-color:#22c55e">${esc(p.g.replace("GRUPO ","G"))} · ${esc(p.d)} ${esc(p.hi)}→${esc(p.hf)}</span>` : `<span style="color:#606070">—</span>`}</td>
           <td><select class="situ" data-ll="situ" data-fid="${fab.id}" data-cod="${esc(r.cod)}" style="${s?`background:${s.bg};color:${s.txt};border-color:${s.br}`:""}"><option value="">—</option>${SITU.map(o=>`<option ${ll.situ===o.v?"selected":""}>${o.v}</option>`).join("")}</select></td>
-          <td>${cc ? `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-ll="cambio" data-fid="${fab.id}" data-cod="${esc(r.cod)}" ${ll.cambio?"checked":""} title="Marcar como cambio de centro propuesto"/><span class="tag" style="background:${ccs[0]};color:${ccs[1]};border-color:${ccs[2]}">${esc(cc.txt)}</span></label>` : `<span style="color:#606070">—</span>`}</td>
-          <td><input class="com" data-ll="com" data-fid="${fab.id}" data-cod="${esc(r.cod)}" value="${esc(ll.com||"")}" placeholder="…"/></td>
+          <td><span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes, transportes${cc?", cambio de centro":""} y comentario">${abierto?"▾":"▸"} ${af ? `${nCli} cliente${nCli!==1?"s":""}` : "detalle"}${marca}</span>${af && fd.cargas && nSin !== af.length ? `<span class="desc">${nSin} sin cargar</span>` : ""}</td>
         </tr>`;
-        if (abierto) stockHtml += `<tr class="det"><td colspan="8"><table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap;color:var(--mut)">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td style="color:var(--mut)">${esc(a.ag)}</td><td style="white-space:nowrap;color:${EST[a.e].c};font-weight:600">${fd.cargas ? EST[a.e].t : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table></td></tr>`;
+        if (abierto) {
+          const extra = `<div class="detx">${cc ? `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><span class="dl">Cambio de centro</span><input type="checkbox" data-ll="cambio" data-fid="${fab.id}" data-cod="${esc(r.cod)}" ${ll.cambio?"checked":""}/><span class="tag" style="background:${ccs[0]};color:${ccs[1]};border-color:${ccs[2]}">${esc(cc.txt)}</span></label>` : ""}<label style="display:flex;gap:6px;align-items:center;flex:1;min-width:200px"><span class="dl">Comentario</span><input class="com" data-ll="com" data-fid="${fab.id}" data-cod="${esc(r.cod)}" value="${esc(ll.com||"")}" placeholder="…"/></label></div>`;
+          const tabla = af ? `<table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap;color:var(--mut)">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td style="color:var(--mut)">${esc(a.ag)}</td><td style="white-space:nowrap;color:${EST[a.e].c};font-weight:600">${fd.cargas ? EST[a.e].t : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
+          stockHtml += `<tr class="det"><td colspan="10">${extra}${tabla}</td></tr>`;
+        }
       });
       stockHtml += `</tbody></table></div>`;
     }
