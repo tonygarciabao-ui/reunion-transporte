@@ -77,7 +77,7 @@
   .tbl.stk tr.ale{--tint:#f59e0b24;--band:#F59E0B}
   .tbl.stk .tag{font-size:10.5px}
   .dl{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap}
-  .af{width:100%;border-collapse:collapse;font-size:12px}
+  .af{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
   .af th{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:3px 6px;font-weight:700}
   .af td{padding:3px 6px;border-top:1px solid #3F3F46}
   .af tr.fin td{opacity:.45}
@@ -343,17 +343,17 @@ function parsePedidos(ab){
   const h = rows[0].map(x => x ? String(x).trim() : "");
   const find = (names) => { for (const n of names) { const i = h.findIndex(x => x && x.toLowerCase().includes(n.toLowerCase())); if (i>=0) return i; } return -1; };
   const iCli = find(["Nombre Destinatario","destinatario"]), iTr = find(["Transp.","Transporte"]);
-  const iFc = find(["Fech.Carga","Fecha Carga"]), iHc = find(["Hora Carga"]), iAg = find(["Nombre Agencia","Agencia","transportista"]);
+  const iFc = find(["Fech.Carga","Fecha Carga"]), iHc = find(["Hora Carga"]), iAg = find(["Nombre Agencia","Agencia","transportista"]), iTm = find(["Tramo"]);
   const fFecha = v => { if (v === null || v === undefined || v === "") return ""; if (typeof v === "number") { const d = new Date(Math.round((v-25569)*864e5)); return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}`; } const m = String(v).match(/^(\d{1,2})[./](\d{1,2})/); return m ? `${pad(m[1])}/${pad(m[2])}` : String(v).trim(); };
   const fHora = v => { if (v === null || v === undefined || v === "") return ""; if (typeof v === "number") { const t = Math.round((v-Math.floor(v))*1440); return `${pad(Math.floor(t/60)%24)}:${pad(t%60)}`; } const m = String(v).match(/(\d{1,2}):(\d{2})/); return m ? `${pad(m[1])}:${m[2]}` : String(v).trim(); };
   const prod = {}; h.forEach((x,i) => { if (/^\d{4}$/.test(x) || /^[A-Z]\d{3}$/.test(x)) prod[x] = i; });
   const map = {};
   rows.slice(1).forEach(r => {
     const cli = iCli>=0 && r[iCli] ? String(r[iCli]).trim() : "", tr = iTr>=0 && r[iTr] ? String(r[iTr]).trim() : "";
-    const fc = iFc>=0 ? fFecha(r[iFc]) : "", hc = iHc>=0 ? fHora(r[iHc]) : "", ag = iAg>=0 && r[iAg] ? String(r[iAg]).trim() : "";
+    const fc = iFc>=0 ? fFecha(r[iFc]) : "", hc = iHc>=0 ? fHora(r[iHc]) : "", ag = iAg>=0 && r[iAg] ? String(r[iAg]).trim() : "", tm = iTm>=0 && r[iTm] ? String(r[iTm]).trim() : "";
     Object.entries(prod).forEach(([cod,ci]) => {
       const q = typeof r[ci] === "number" ? r[ci] : parseFloat(String(r[ci]??"").replace(",","."));
-      if (!isNaN(q) && q > 0) (map[cod] ||= []).push({ cli, tr, q, fc, hc, ag });
+      if (!isNaN(q) && q > 0) (map[cod] ||= []).push({ cli, tr, q, fc, hc, ag, tm });
     });
   });
   return map;
@@ -439,13 +439,14 @@ function afectados(fd, cod){
   const ls = fd.pedidos?.[cod]; if (!ls) return null;
   const by = {};
   ls.forEach(x => {
-    const k = x.tr || "(sin transporte) " + x.cli;
-    const a = (by[k] ||= { tr:x.tr, clis:new Set(), q:0, fc:x.fc||"", hc:x.hc||"", ag:x.ag||"" });
+    const k = (x.tr || "-") + "|" + x.cli;
+    const a = (by[k] ||= { tr:x.tr, clis:new Set(), q:0, fc:x.fc||"", hc:x.hc||"", ag:x.ag||"", tm:x.tm||"" });
     if (x.cli) a.clis.add(x.cli); a.q += x.q;
   });
   const mapa = fd.cargas?.mapa || {};
   const out = Object.values(by).map(a => { const m = mapa[a.tr]; return { ...a, clis:[...a.clis], e: m ? m.e : "", ag: a.ag || m?.ag || "", ini: m?.ini || "" }; });
-  out.sort((a,b) => EST[a.e].o - EST[b.e].o || String(a.fc+a.hc).localeCompare(String(b.fc+b.hc)));
+  const tnum = t => { const m = String(t||"").match(/(\d+)/); return m ? +m[1] : 999; };
+  out.sort((a,b) => EST[a.e].o - EST[b.e].o || tnum(a.tm) - tnum(b.tm) || String(a.fc+a.hc).localeCompare(String(b.fc+b.hc)) || String(a.tr).localeCompare(String(b.tr)));
   return out;
 }
 
@@ -528,7 +529,8 @@ function renderFab(fab){
         const afAll = afectados(fd, r.cod);
         const af = afAll && present ? afAll.filter(a => a.e !== "fin") : afAll;
         const nCli = af ? new Set(af.flatMap(a => a.clis)).size : null;
-        const nSin = af ? af.filter(a => a.e !== "fin").length : 0;
+        const nSin = af ? new Set(af.filter(a => a.e !== "fin").map(a => a.tr)).size : 0;
+        const nTr = af ? new Set(af.map(a => a.tr)).size : 0;
         const abierto = !!af && af.length > 0 && (present || (fd.exp?.[r.cod] ?? !!fd.expAll));
         const dash = v => v ? fmtN(v) : `<span style="color:#52525B">—</span>`;
         stockHtml += `<tr class="art ${r.diff<0?"rot":r.diff===0?"jus":"ale"} ${abierto?"abierta":""}">
@@ -541,10 +543,11 @@ function renderFab(fab){
           <td class="n" style="font-weight:800;color:${r.diff<0?"#EF4444":r.diff===0?"#38BDF8":"#F59E0B"}">${r.diff.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
           <td>${p ? `<span class="tag" style="background:#0a3d1f;color:#6ee7a0;border-color:#22c55e">${esc(p.g.replace("GRUPO ","G"))} · ${esc(p.d)} ${esc(p.hi)}→${esc(p.hf)}</span>` : `<span style="color:#606070">—</span>`}</td>
           <td><select class="situ" data-ll="situ" data-fid="${fab.id}" data-cod="${esc(r.cod)}" style="${s?`background:${s.bg};color:${s.txt};border-color:${s.br}`:""}"><option value="">—</option>${SITU.map(o=>`<option ${ll.situ===o.v?"selected":""}>${o.v}</option>`).join("")}</select></td>
-          <td>${af ? `<span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes y transportes">${abierto?"▾":"▸"} ${nCli} cliente${nCli!==1?"s":""}</span>` : `<span style="color:#606070">—</span>`}${af && fd.cargas && nSin !== af.length ? `<span class="desc">${nSin} sin cargar</span>` : ""}</td>
+          <td>${af ? `<span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes y transportes">${abierto?"▾":"▸"} ${nCli} cliente${nCli!==1?"s":""}</span>` : `<span style="color:#606070">—</span>`}${af && fd.cargas && nSin !== nTr ? `<span class="desc">${nSin} sin cargar</span>` : ""}</td>
         </tr>`;
         if (abierto) {
-          const tabla = af ? `<table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}" style="${fd.cargas && EST[a.e].bg ? `background:${EST[a.e].bg}` : ""}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td>${esc(a.ag)}</td><td style="white-space:nowrap">${fd.cargas ? `<span class="est" title="${EST[a.e].tip}" style="color:${EST[a.e].c};border-color:${EST[a.e].c}66">${EST[a.e].t}</span>` : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
+          const hoyDM = fmtES(date).slice(0,5);
+          const tabla = af ? `<table class="af"><colgroup><col style="width:58px"><col style="width:64px"><col style="width:76px"><col><col style="width:130px"><col style="width:84px"></colgroup><thead><tr><th style="text-align:right">Cant.</th><th>Tramo</th><th>Transporte</th><th>Cliente</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}" style="${fd.cargas && EST[a.e].bg ? `background:${EST[a.e].bg}` : ""}" title="Carga ${esc(a.fc)} ${esc(a.hc || a.ini)}"><td style="text-align:right;font-variant-numeric:tabular-nums;color:#fcd34d;font-weight:700">${fmtN(a.q)}</td><td style="font-weight:700;white-space:nowrap">${esc(a.tm || "—")}${a.fc && a.fc !== hoyDM ? ` <span style="font-size:10px;color:#c4b5fd;font-weight:600">${esc(a.fc)}</span>` : ""}</td><td style="font-weight:700;color:#38BDF8">${esc(a.tr||"—")}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.clis.join(" · "))}</td><td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.ag)}</td><td style="white-space:nowrap">${fd.cargas ? `<span class="est" title="${EST[a.e].tip}" style="color:${EST[a.e].c};border-color:${EST[a.e].c}66">${EST[a.e].t}</span>` : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
           stockHtml += `<tr class="det"><td colspan="10">${tabla}</td></tr>`;
         }
       });
