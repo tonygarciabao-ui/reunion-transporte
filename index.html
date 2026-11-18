@@ -54,15 +54,18 @@
   .afbtn{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:700;color:#c4b5fd;background:#22103d;border:1px solid #8b5cf666;border-radius:5px;padding:1px 6px;cursor:pointer;white-space:nowrap}
   .afbtn.open{background:#3b2a55}
   .tbl tr.det>td{background:#0f0f14;padding:6px 8px 10px 22px}
-  .tbl.stk>tbody>tr>td{border-bottom:2px solid #4A4A5A;vertical-align:middle}
+  .tbl.stk>tbody>tr>td{border-bottom:3px solid #A1A1AA;vertical-align:middle}
   .tbl.stk>tbody>tr.abierta>td{border-bottom:1px dashed #3F3F46}
-  .tbl.stk th{border-bottom:2px solid #6A6A7A}
+  .tbl.stk th{border-bottom:3px solid #A1A1AA;color:#FFFFFF}
+  .tbl.stk .desc{color:#E5E7EB}
+  .af th{color:#FFFFFF!important}
+  .af td{color:#FFFFFF}
   .tbl.stk td,.tbl.stk th{padding-left:5px;padding-right:5px}
   .tbl.stk .tag{font-size:10.5px}
   .dl{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap}
   .af{width:100%;border-collapse:collapse;font-size:12px}
   .af th{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:3px 6px;font-weight:700}
-  .af td{padding:3px 6px;border-top:1px solid #23232b}
+  .af td{padding:3px 6px;border-top:1px solid #3F3F46}
   .af tr.fin td{opacity:.45}
   .wrap{overflow-x:auto}
   .cod{font-weight:800;color:var(--c)}
@@ -384,7 +387,7 @@ const EST = {
   reg:  { t:"Registrado", c:"#7dd3fc", o:1 },
   enc:  { t:"En carga",   c:"#6ee7a0", o:2 },
   fin:  { t:"Cargado",    c:"#71717a", o:4 },
-  "":   { t:"No está en Cargas del día", c:"#a1a1aa", o:3 },
+  "":   { t:"No está en Cargas del día", c:"#FFFFFF", o:3 },
 };
 function afectados(fd, cod){
   const ls = fd.pedidos?.[cod]; if (!ls) return null;
@@ -494,7 +497,7 @@ function renderFab(fab){
           <td>${af ? `<span class="afbtn ${abierto?"open":""}" data-exp="${esc(r.cod)}" data-fid="${fab.id}" title="Ver clientes y transportes">${abierto?"▾":"▸"} ${nCli} cliente${nCli!==1?"s":""}</span>` : `<span style="color:#606070">—</span>`}${af && fd.cargas && nSin !== af.length ? `<span class="desc">${nSin} sin cargar</span>` : ""}</td>
         </tr>`;
         if (abierto) {
-          const tabla = af ? `<table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap;color:var(--mut)">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td style="color:var(--mut)">${esc(a.ag)}</td><td style="white-space:nowrap;color:${EST[a.e].c};font-weight:600">${fd.cargas ? EST[a.e].t : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
+          const tabla = af ? `<table class="af"><thead><tr><th>Transporte</th><th>Cliente</th><th style="text-align:right">Cant.</th><th>F. carga</th><th>Agencia</th><th>Estado</th></tr></thead><tbody>${af.map(a => `<tr class="${a.e}"><td style="font-weight:700">${esc(a.tr||"—")}</td><td>${esc(a.clis.join(" · "))}</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmtN(a.q)}</td><td style="white-space:nowrap">${esc(a.fc)} ${esc(a.hc || a.ini)}</td><td>${esc(a.ag)}</td><td style="white-space:nowrap;color:${EST[a.e].c};font-weight:600">${fd.cargas ? EST[a.e].t : "<span style='color:#606070'>sube Cargas</span>"}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Sube 📋 CARGAR PEDIDOS para ver los clientes.</div>`;
           stockHtml += `<tr class="det"><td colspan="10">${tabla}</td></tr>`;
         }
       });
