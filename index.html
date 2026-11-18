@@ -386,12 +386,12 @@ function afectados(fd, cod){
   const by = {};
   ls.forEach(x => {
     const k = x.tr || "(sin transporte) " + x.cli;
-    const a = (by[k] ||= { tr:x.tr, clis:new Set(), q:0, fc:x.fc, hc:x.hc, ag:x.ag });
+    const a = (by[k] ||= { tr:x.tr, clis:new Set(), q:0, fc:x.fc||"", hc:x.hc||"", ag:x.ag||"" });
     if (x.cli) a.clis.add(x.cli); a.q += x.q;
   });
   const mapa = fd.cargas?.mapa || {};
   const out = Object.values(by).map(a => { const m = mapa[a.tr]; return { ...a, clis:[...a.clis], e: m ? m.e : "", ag: a.ag || m?.ag || "", ini: m?.ini || "" }; });
-  out.sort((a,b) => EST[a.e].o - EST[b.e].o || (a.fc+a.hc).localeCompare(b.fc+b.hc));
+  out.sort((a,b) => EST[a.e].o - EST[b.e].o || String(a.fc+a.hc).localeCompare(String(b.fc+b.hc)));
   return out;
 }
 
@@ -591,8 +591,9 @@ function render(){
   renderRealesBtn();
   $("#hdrDate").textContent = fmtES(date);
   $("#date").value = date;
-  FABS.forEach(renderFab);
-  renderGlobal();
+  const safe = (fn, el, arg) => { try { fn(arg); } catch(err) { console.error(err); el.innerHTML = `<div style="color:#fca5a5;padding:12px;font-size:13px">⚠️ Error al mostrar esta sección: ${esc(err.message)}<br><span style="color:var(--mut)">Prueba a volver a subir los archivos de esta fábrica o usa ⚙️ → Vaciar datos de este día.</span></div>`; } };
+  FABS.forEach(f => safe(renderFab, $("#f-"+f.id), f));
+  safe(renderGlobal, $("#global"));
 }
 
 // ───────────────────────── Resumen texto ─────────────────────────
