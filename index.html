@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" translate="no">
 <head>
 <meta charset="UTF-8"/>
+<meta name="google" content="notranslate"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Reunión Transporte</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -338,7 +339,7 @@ function renderFab(fab){
   const kpi = (l, v, color, sub="") => `<div class="kpi"><div class="l">${l}</div><div class="v" style="color:${color}">${v}</div><div class="s">${sub}</div></div>`;
 
   let stockHtml;
-  if (!fd.stocks) stockHtml = `<div class="empty">Sube el Excel/XML de stocks SAP.</div>`;
+  if (!fd.stocks) stockHtml = `<div class="empty">Sube el mismo Excel/XML de stocks que usas en “📂 Cargar stocks” de Diario Fábrica.</div>`;
   else {
     const chip = (k, lbl, col) => `<button class="chip ${filtro===k?"sel":""}" data-filtro="${k}" data-fid="${fab.id}" style="border-color:${col};color:${col}"><b>${cl[k].length}</b>${lbl}</button>`;
     stockHtml = `<div class="chips">${chip("rotura","Roturas","#EF4444")}${chip("justo","Justos","#38BDF8")}${chip("alerta","Alerta ≤"+cfg.umbral,"#F59E0B")}</div>`;
@@ -370,7 +371,7 @@ function renderFab(fab){
   // Llenados: plan de envasado (hoy + lo cargado), resaltando los que cubren roturas/justos
   const riesgo = new Set([...cl.rotura, ...cl.justo].map(r => r.cod));
   let planHtml;
-  if (!fd.plan?.length) planHtml = `<div class="empty">Sube la planificación de envasado.</div>`;
+  if (!fd.plan?.length) planHtml = `<div class="empty">Sube el mismo Excel que usas en “📂 Cargar planificación” de Diario Fábrica.</div>`;
   else {
     const hits = fd.plan.filter(p => riesgo.has(p.cod));
     const rest = fd.plan.filter(p => !riesgo.has(p.cod));
@@ -382,10 +383,10 @@ function renderFab(fab){
   el.innerHTML = `
     <h2>🏭 ${fab.label}</h2>
     <div class="uploads">
-      ${up("cargas","🚛 Cargas",".xlsx,.xls",fd.cargasHora)}
-      ${up("stocks","📦 Stocks SAP",".xlsx,.xls,.xml",fd.stocksHora)}
+      ${up("cargas","🚛 Cargas (día)",".xlsx,.xls",fd.cargasHora)}
+      ${up("stocks","📦 Stocks",".xlsx,.xls,.xml",fd.stocksHora)}
       ${up("plan","📅 Planificación",".xlsx,.xls",fd.planHora)}
-      ${up("pedidos","🧾 Pedidos (opc.)",".xlsx,.xls",fd.pedidosHora)}
+      ${up("pedidos","📋 Pedidos (opc.)",".xlsx,.xls",fd.pedidosHora)}
     </div>
 
     <div class="sec">Camiones</div>
