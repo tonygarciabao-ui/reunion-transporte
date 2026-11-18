@@ -85,6 +85,7 @@
   #toast.show{opacity:1}
   details summary{cursor:pointer;list-style:none}
   details summary::-webkit-details-marker{display:none}
+  details[open]>summary{border-color:#22c55e66}
   /* Modo presentación: oculta controles, agranda */
   body.present .uploads, body.present .noprint, body.present #cfg{display:none!important}
   body.present{font-size:15.5px}
@@ -412,8 +413,10 @@ function renderFab(fab){
       const rows = vis.map(p => { const e = estadoOrden(p); return `<div class="po ${e} ${riesgo.has(p.cod)?"hit":""}"><b>${esc(p.cod)}</b><span class="ds" title="${esc(p.desc)}">${esc(p.desc.replace(/_\d+$/,""))}</span><span class="t">${e==="now"?"▶ ":""}${esc(p.d)} ${esc(p.hi)} → ${p.df!==p.d?esc(p.df)+" ":""}${esc(p.hf)}</span></div>`; }).join("");
       return `<div class="gc ${hit?"hit":""}"><h4>${esc(g)}<small>${ocultar && nDone ? nDone+" terminada"+(nDone>1?"s":"") : ""}</small></h4>${rows || `<div class="empty">Sin órdenes pendientes</div>`}</div>`;
     };
-    planHtml = `<div class="leg"><span><i style="background:#22c55e"></i>En curso ahora</span><span><i style="background:#ef4444"></i>Cubre rotura / justo</span><label style="margin-left:auto;cursor:pointer" class="noprint"><input type="checkbox" data-ocultarfin="${fab.id}" ${ocultar?"checked":""}/> Ocultar órdenes terminadas</label></div>
-      <div class="grupos">${Object.entries(grupos).sort((x,y)=>gnum(x[0])-gnum(y[0])).map(card).join("")}</div>`;
+    const nG = Object.keys(grupos).length;
+    const gHit = Object.entries(grupos).filter(([g,o]) => o.some(p => riesgo.has(p.cod) && estadoOrden(p) !== "done")).map(([g]) => g.replace("GRUPO ","G"));
+    planHtml = `<details data-planopen="${fab.id}" ${fd.planOpen?"open":""}><summary style="font-size:13px;font-weight:600;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:8px">▸ Ver plan por grupos (${nG} grupos)${gHit.length?` · <span style="color:#fca5a5">cubren roturas: ${gHit.join(", ")}</span>`:""}</summary><div style="margin-top:8px"><div class="leg"><span><i style="background:#22c55e"></i>En curso ahora</span><span><i style="background:#ef4444"></i>Cubre rotura / justo</span><label style="margin-left:auto;cursor:pointer" class="noprint"><input type="checkbox" data-ocultarfin="${fab.id}" ${ocultar?"checked":""}/> Ocultar órdenes terminadas</label></div>
+      <div class="grupos">${Object.entries(grupos).sort((x,y)=>gnum(x[0])-gnum(y[0])).map(card).join("")}</div></div></details>`;
   }
 
   el.innerHTML = `
@@ -563,6 +566,7 @@ document.addEventListener("click", (e) => {
   if (t.dataset.filtro) { S[t.dataset.fid].filtro = t.dataset.filtro; save(); render(); }
   if (t.dataset.nocheclr) { e.preventDefault(); S[t.dataset.nocheclr].nocheManual = ""; save(); render(); }
 });
+document.addEventListener("toggle", (e) => { const t = e.target; if (t.dataset && t.dataset.planopen) { S[t.dataset.planopen].planOpen = t.open; save(); } }, true);
 $("#bPresent").onclick = () => { present = !present; document.body.classList.toggle("present", present); $("#bPresent").classList.toggle("on", present); };
 $("#bCfg").onclick = () => $("#cfg").classList.toggle("open");
 $("#bCopy").onclick = async () => {
